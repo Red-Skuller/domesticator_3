@@ -12,7 +12,7 @@ The tool currently lives under ''/home/rdkibler/projects/dom_dev/domesticator3/d
 Here is a basic example:
 
 ```bash
-/software/domesticator3/domesticator3 my_design.pdb /software/domesticator3/vectors/standard/pET29b.gb
+/software/domesticator3.py/domesticator3.py my_design.pdb /software/domesticator3.py/vectors/standard/pET29b.gb
 ```
 
 Domesticator is non-deterministic, so by default it will optimize each sequence multiple times and pick the best one to output. The number of optimizations to try is controlled by the ''–nstruct'' flag

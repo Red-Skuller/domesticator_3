@@ -1,11 +1,10 @@
-#!/net/software/lab/domesticator_3/env/michaelangeneo/bin/python3.9
 # -*- coding: utf-8 -*-
 
 ###### input handling ######
 #this happens first so it fails quickly if bad inputs are given
 import argparse
 
-parser = argparse.ArgumentParser(prog='domesticator3', description='A sophisticated codon optimizer for the discerning protein designer')
+parser = argparse.ArgumentParser(prog='domesticator3.py', description='A sophisticated codon optimizer for the discerning protein designer')
 
 parser.add_argument("proteins", type=str, nargs="+", help="Either one or more fasta files containing one or more protein sequences or one or more pdb files")
 parser.add_argument("vector", type=str, help="A genbank (.gb) file containing annotations in the domesticator format to control domesticator function")

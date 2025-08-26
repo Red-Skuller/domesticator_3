@@ -37,7 +37,7 @@ def optimize_single(
     idt_user_info = idt.get_user_info(idt.user_info_file)
 
     # doing this mostly
-    # base_vector_record = input_parsing.load_vector_record("/home/rdkibler/projects/dom_dev/domesticator3/vectors/fragment.gb")
+    # base_vector_record = input_parsing.load_vector_record("/home/rdkibler/projects/dom_dev/domesticator3.py/vectors/fragment.gb")
     # record = input_parsing.make_naive_vector_record_by_seq(base_vector_record,amino_acid_sequence)
     # initial_problem = DnaOptimizationProblem.from_record(record)
     naive_dna_sequence = reverse_translate(amino_acid_sequence)
