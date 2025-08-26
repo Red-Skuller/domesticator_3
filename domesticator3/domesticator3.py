@@ -40,8 +40,8 @@ def main():
     import pandas as pd
 
     # Local application imports
-    from tools import input_parsing, product_analysis, idt
-    from specifications.MinimizeNumKmers import MinimizeNumKmers
+    from .tools import input_parsing, product_analysis, idt
+    from .specifications.MinimizeNumKmers import MinimizeNumKmers
 
     DEFAULT_SPECIFICATIONS_DICT['MinimizeNumKmers'] = MinimizeNumKmers
 

@@ -1,0 +1,42 @@
+[project]
+name = "domesticator3"
+version = "0.1.0"
+description = "CLI tool to generate and optimize codon usage if inserts"
+license = "MIT"
+authors = [
+    {name = "lukah",email = "lh7128@student.uni-lj.si"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dnachisel (==3.2.16)",
+    "altgraph (==0.17.4)",
+    "biopython (==1.85)",
+    "certifi (==2025.8.3)",
+    "charset-normalizer (==3.4.3)",
+    "docopt (==0.6.2)",
+    "flametree (==0.2.1)",
+    "idna (==3.10)",
+    "numpy (==2.3.2)",
+    "packaging (==25.0)",
+    "pandas (==2.3.2)",
+    "pandas-stubs (==2.3.0.250703)",
+    "proglog (==0.1.12)",
+    "python-dateutil (==2.9.0.post0)",
+    "python-codon-tables (==0.1.18)",
+    "pytz (==2025.2)",
+    "requests (==2.32.5)",
+    "setuptools (==80.9.0)",
+    "six (==1.17.0)",
+    "tqdm (==4.67.1)",
+    "tzdata (==2025.2)",
+    "urllib3 (==2.5.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+domesticator = "domesticator3.__main__:main"
