@@ -28,6 +28,10 @@ def main():
                         help="bypass the gene optimization step. Useful for debugging new vectors")
     parser.add_argument("--ramp-kmers-boost", type=float, default=0,
                         help="increase the boost of the kmers objective after each failed optimization. Default: %(default)f")
+    parser.add_argument("--param_file", action="store_true",
+                        help="Write translated_proteins.param file at the end of the optimization.")
+    parser.add_argument("--skip_order_file", action="store_true",
+                        help="do not write order.dna.fasta file at the end of the optimization.")
 
     parser.add_argument('--version', action='version', version='%(prog)s alpha 1.0')
 
@@ -61,6 +65,8 @@ def main():
                                                                    args.single_protein_fasta)
 
     ###### optimize ######
+    records_to_synthesize = []
+    all_protein_params = []
     optimized_vector_solutions = []
     for i, record in enumerate(naive_vector_records):
         print("-" * 40 + f" {i + 1}/{len(naive_vector_records)} " + "-" * 40)
@@ -139,17 +145,16 @@ def main():
         best_solution = solutions[best_idx]
         optimized_vector_solutions.append(best_solution)
 
-    ###### create reports and outputs ######
-    print("REPORT")
-    records_to_synthesize = []
-    all_protein_params = []
-    for optimized_vector_solution in optimized_vector_solutions:
+        # report here
+        print("REPORTING CURRENT")
+        optimized_vector_solution = optimized_vector_solutions[-1]
         # optimized_vector_solution.record stores the NAIVE RECORD, so we need to use to_record()
         # however I think the annotations to the generated record (from to_record()) are bad, so instead let's just transplant the sequence
         optimized_vector_record = optimized_vector_solution.record
         optimized_vector_record.seq = Seq(optimized_vector_solution.sequence)
 
-        Bio.SeqIO.write(optimized_vector_record, optimized_vector_record.name + ".gb", "genbank")
+        if not args.skip_gb_files:
+            Bio.SeqIO.write(optimized_vector_record, optimized_vector_record.name + ".gb", "genbank")
 
         fragment_to_synthesize = None
         for feature in optimized_vector_record.features:
@@ -162,17 +167,21 @@ def main():
 
         records_to_synthesize.append(record_to_synthesize)
 
-        with open(optimized_vector_record.name + ".log", 'w') as f:
-            f.write(optimized_vector_solution.constraints_text_summary() + "\n")
-            f.write(optimized_vector_solution.objectives_text_summary() + "\n")
+        if not args.skip_gb_files:
+            with open(optimized_vector_record.name + ".log", 'w') as f:
+                f.write(optimized_vector_solution.constraints_text_summary() + "\n")
+                f.write(optimized_vector_solution.objectives_text_summary() + "\n")
 
         polypeptides = product_analysis.find_polypeptides(optimized_vector_record)
         protein_params = product_analysis.get_params(polypeptides)
-        all_protein_params.append(
-            protein_params)  # TODO: Add support for detection of protease cleavage sites and printing of the fragment params
+        all_protein_params.append(protein_params)
+        # TODO: Add support for detection of protease cleavage sites and printing of the fragment params
 
-    pd.concat(all_protein_params).to_csv("translated_proteins.params")
-    Bio.SeqIO.write(records_to_synthesize, "order.dna.fasta", "fasta")
+        # kinda dumb Bio.SeqIO doesn't have a append function?
+        if args.param_file:
+            pd.concat(all_protein_params).to_csv("translated_proteins.params")
+        if not args.skip_order_file:
+            Bio.SeqIO.write(records_to_synthesize, "order.dna.fasta", "fasta")
 
     # ## start debug block -- gives user the steering wheel  # import code  # print("now entering interactive console. Press Ctrl-D to return to the script")  # code.interact(local=locals())  # ## end debug block
 
