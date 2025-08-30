@@ -19,7 +19,7 @@ class MinimizeNumKmers(Specification):
     def evaluate(self, problem):
         """Return a customized kmer score for the problem's sequence"""
         sequence = self.location.extract_sequence(problem.sequence)
-        all_kmers = [sequence[i : i + self.k] for i in range(len(sequence) - self.k)]
+        all_kmers = [sequence[i: i + self.k] for i in range(len(sequence) - self.k)]
         number_of_non_unique_kmers = sum(
             [count for kmer, count in Counter(all_kmers).items() if count > 1]
         )
@@ -30,7 +30,7 @@ class MinimizeNumKmers(Specification):
             score=score,
             locations=[self.location],
             message="Score: %.02f (%d non-unique %d-mers)"
-            % (score, number_of_non_unique_kmers, self.k),
+                    % (score, number_of_non_unique_kmers, self.k),
         )
 
     def label_parameters(self):

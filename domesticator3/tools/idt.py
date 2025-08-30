@@ -1,4 +1,3 @@
-#!/home/rdkibler/.conda/envs/domesticator_py36/bin/python
 import os
 from pathlib import Path
 import time
@@ -14,7 +13,8 @@ from urllib import request, parse
 
 data_collection_basedir = "/net/shared/idt_dna/sequence_complexity_data_raw"
 
-def vprint(str, verbose:bool=False, **kwargs):
+
+def vprint(str, verbose: bool = False, **kwargs):
     if verbose:
         print(str, **kwargs)
 
@@ -22,7 +22,7 @@ def vprint(str, verbose:bool=False, **kwargs):
 def use_dir(dir):
     user_info_file = os.path.expanduser(os.path.join(dir, "info.json"))
     # token_file = os.path.expanduser(os.path.join(dir, "token.json"))
-    return user_info_file #, token_file
+    return user_info_file  # , token_file
 
 
 def ask_for_user_data(user_info_file):
@@ -84,8 +84,8 @@ def get_user_info(user_info_file):
 
         with open(user_info_file, "w+") as f:
             json.dump(user_info, f)
-
-    #look for the consent_to_data_collection field
+    """ Commented out to make the script portable @lhafner 250830
+    # look for the consent_to_data_collection field
     if "consent_to_data_collection" not in user_info:
         print("We want to build a fast IDT score predictor. In order to do")
         print("this we need to collect the DNA sequences you send to IDT ")
@@ -111,7 +111,7 @@ def get_user_info(user_info_file):
 
         with open(user_info_file, "w+") as f:
             json.dump(user_info, f)
-
+    """
     return user_info
 
 
@@ -213,12 +213,13 @@ def get_token(user_info, verbose=False):
         store_token(token, token_file)
     return token
 
+
 def store_response(response_dict, name, seq, kind):
     date = datetime.datetime.now().strftime("%Y-%m-%d")
     timestamp = datetime.datetime.now().strftime("%H-%M-%S-%f")[:-3]
     username = os.getlogin()
 
-    data_collection_dir = os.path.join(data_collection_basedir,username, date)
+    data_collection_dir = os.path.join(data_collection_basedir, username, date)
     os.makedirs(data_collection_dir, exist_ok=True)
 
     data = {}
@@ -236,8 +237,7 @@ def store_response(response_dict, name, seq, kind):
         json.dump(data, f)
 
 
-
-def query_complexity(seq, user_info, verbose:bool=False, kind:str='gene', gene_name=None):
+def query_complexity(seq, user_info, verbose: bool = False, kind: str = 'gene', gene_name=None):
     token = get_token(user_info)['access_token']
 
     url_dict = {}
@@ -272,7 +272,6 @@ def query_complexity(seq, user_info, verbose:bool=False, kind:str='gene', gene_n
             break
 
     if int(response.status_code) != 200:
-
         print(response)
         print(dir(response))
         print("JSON")
@@ -299,13 +298,13 @@ def query_complexity(seq, user_info, verbose:bool=False, kind:str='gene', gene_n
         raise RuntimeError(
             f"Request failed with error code: {response.status_code} \nBody:\n{response.text}"
         )
-    
-    response_dict = json.loads(response.text)
 
+    response_dict = json.loads(response.text)
+    """ Commented out to make the script portable @lhafner 250830
     if user_info['consent_to_data_collection']:
         vprint(f"storing response at {data_collection_basedir}", verbose)
         store_response(response_dict, gene_name, seq, kind)
-
+    """
     return response_dict
 
 
@@ -319,8 +318,9 @@ if __name__ == "__main__":
         type=str,
         help="A fasta file containing the sequences you want to check for complexity",
     )
-    parser.add_argument("--credential_dir", default="~/idt_credentials")
-    parser.add_argument('-k', '--kind', type=str, help='kind of sequence to query', default='gene', choices = ['gene','gblock','gblock_hifi','eblock','old'])
+    parser.add_argument("--credential_dir", default="~/.idt_credentials")
+    parser.add_argument('-k', '--kind', type=str, help='kind of sequence to query', default='gene',
+                        choices=['gene', 'gblock', 'gblock_hifi', 'eblock', 'old'])
     args = parser.parse_args()
 
     user_info_file = use_dir(args.credential_dir)
@@ -334,7 +334,7 @@ if __name__ == "__main__":
         else:
             for issue in response:
                 score += issue["Score"]
-        
+
         print(record.id, record.seq, score)
 
 """
@@ -342,7 +342,6 @@ Accepted - Moderate Complexity (Scores between 7 and 19)
 
 Some complexities exist that may interfere with or delay manufacturing. If it is possible to reduce these complexities please do so, otherwise we will attempt this order.
 """
-
 
 """
 ForwardLocations is a list of problem locations fwd. I believe these are zero index

@@ -51,18 +51,18 @@ def load_insert_seq(sequence) -> SeqRecord.SeqRecord:
 
 
 def load_inserts(
-    filenames, increasing_chain_fasta
+        filenames, increasing_chain_fasta
 ) -> Generator[SeqRecord.SeqRecord, None, None]:
     """yields Biopython SeqRecord.SeqRecords
 
     A generator function which always returns a list of SeqRecords holding DNA
     encoding the protein sequences taken from the input files, but how it returns
-    them differes by input type.
+    them differs by input type.
 
     If the filename is a fasta file, then each line is returned as a separate record
     (list of length 1)
 
-    If the filename is a pdb file, then each chain is extracted and and they are
+    If the filename is a pdb file, then each chain is extracted and they are
     returned together
 
     rdkibler 210320
@@ -131,7 +131,7 @@ def get_insert_locations(record) -> dict:
 
     for feature in record.features:
         if feature.type == "misc_feature" and feature.qualifiers["label"][0].startswith(
-            "!insert("
+                "!insert("
         ):
             chain_letter = feature.qualifiers["label"][0].split("(")[1].split(")")[0]
             location = feature.location
@@ -150,13 +150,13 @@ def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
     # I don't know if this is right. What does the strand number mean? --rdkibler 210320
     if location.strand >= 0:
         adjusted_seq = (
-            record.seq[: location.start] + insert.seq + record.seq[location.end :]
+                record.seq[: location.start] + insert.seq + record.seq[location.end:]
         )
     else:
         adjusted_seq = (
-            record.seq[: location.start]
-            + insert.reverse_complement().seq
-            + record.seq[location.end :]
+                record.seq[: location.start]
+                + insert.reverse_complement().seq
+                + record.seq[location.end:]
         )
 
     record.seq = adjusted_seq
@@ -191,10 +191,10 @@ def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
             # type 1: where the start and end are contained within the original location
             # -> do not add it to the processed_features list because I have no idea where it should go
             if (
-                subloc.start > location.start
-                and subloc.start < location.end
-                and subloc.end > location.start
-                and subloc.end < location.end
+                    subloc.start > location.start
+                    and subloc.start < location.end
+                    and subloc.end > location.start
+                    and subloc.end < location.end
             ):
                 continue
 
@@ -237,10 +237,10 @@ def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
             # type 3: where they span the location
             # -> keep the leftmost point same and add diff to rightmost. do not split
             elif (
-                location.start >= subloc.start
-                and location.start <= subloc.end
-                and location.end >= subloc.start
-                and location.end <= subloc.end
+                    location.start >= subloc.start
+                    and location.start <= subloc.end
+                    and location.end >= subloc.start
+                    and location.end <= subloc.end
             ):
                 new_loc = FeatureLocation(
                     subloc.start, subloc.end + seq_diff, strand=subloc.strand
@@ -269,7 +269,7 @@ def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
 
 
 def make_naive_vector_records(
-    base_vector_record, protein_filepaths, increasing_chain_fasta=False
+        base_vector_record, protein_filepaths, increasing_chain_fasta=False
 ) -> list:
     """returns a list of Biopython SeqRecord.SeqRecords which have randomly reverse-translated inserts in the base_vector_record
 
@@ -290,7 +290,7 @@ def make_naive_vector_records(
                 )
                 vec_name = intermediate_vector_record.name
                 insert_name = insert.name
-                intermediate_vector_record.name = f"{insert_name}__{vec_name}"
+                intermediate_vector_record.name = f"{insert_name}__{vec_name}" #TODO customizable output names
                 output_records.append(intermediate_vector_record)
         else:
             intermediate_vector_record = copy.deepcopy(base_vector_record)
@@ -308,12 +308,12 @@ def make_naive_vector_records(
             insert_name = insert.name[:-2]  # cuts off _A or whatever chain ID it is
             intermediate_vector_record.name = f"{insert_name}__{vec_name}"
             output_records.append(intermediate_vector_record)
-        
+
     return output_records
 
 
 def make_naive_vector_record_by_seq(
-    base_vector_record, amino_acid_sequence
+        base_vector_record, amino_acid_sequence
 ) -> SeqRecord.SeqRecord:
     """returns Biopython SeqRecord.SeqRecord
 

@@ -13,25 +13,24 @@ from dnachisel import DEFAULT_SPECIFICATIONS_DICT
 from dnachisel import Location
 from dnachisel import reverse_translate
 
-
 from Bio.Seq import Seq
 from Bio.SeqFeature import FeatureLocation
 import numpy as np
 
 # Local application imports
-from tools import input_parsing, idt
+from .tools import input_parsing, idt
 from specifications.MinimizeNumKmers import MinimizeNumKmers
 
 DEFAULT_SPECIFICATIONS_DICT["MinimizeNumKmers"] = MinimizeNumKmers
 
 
 def optimize_single(
-    amino_acid_sequence,
-    kmers_weight=20,
-    cai_weight=1.0,
-    hairpins_weight=1.0,
-    max_tries=10,
-    species="e_coli",
+        amino_acid_sequence,
+        kmers_weight=20,
+        cai_weight=1.0,
+        hairpins_weight=1.0,
+        max_tries=10,
+        species="e_coli",
 ):
     idt.user_info_file, idt.token_file = idt.use_dir("~/idt_credentials")
     idt_user_info = idt.get_user_info(idt.user_info_file)

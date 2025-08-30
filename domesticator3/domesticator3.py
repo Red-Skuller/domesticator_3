@@ -1,31 +1,37 @@
 # -*- coding: utf-8 -*-
 def main():
     ###### input handling ######
-    #this happens first so it fails quickly if bad inputs are given
+    # this happens first so it fails quickly if bad inputs are given
     import argparse
 
-    parser = argparse.ArgumentParser(prog='domesticator3.py', description='A sophisticated codon optimizer for the discerning protein designer')
+    parser = argparse.ArgumentParser(prog='domesticator3.py',
+                                     description='A sophisticated codon optimizer for the discerning protein designer')
 
-    parser.add_argument("proteins", type=str, nargs="+", help="Either one or more fasta files containing one or more protein sequences or one or more pdb files")
-    parser.add_argument("vector", type=str, help="A genbank (.gb) file containing annotations in the domesticator format to control domesticator function")
-
-    parser.add_argument("--single_protein_fasta", action="store_true",help="Assign increasing chain letters in the order that they appear in the file. Lettering resets between files. This is useful for multiple insertions with a fasta file")
-
-    parser.add_argument("--nstruct", type=int, default=10, help="number of times to repeat optimization before picking one to return. Default: %(default)d")
-    parser.add_argument("--max_tries", type=int, default=3, help="number of times to restart optimization before giving up if no solution is found. Default: %(default)d")
-    parser.add_argument("--no_idt",action="store_true",help="Turn off complexity checking using IDT's API")
-    #parser.add_argument("--idt_credentials_dir",type=str,default = "/home/rdkibler/projects/dom_dev/lab_shared_idt_creds", help="A path to the place to search for you stored IDT API credentials. If no info.json file is found, then you will be prompted to enter new ones and they will be stored there")
-    parser.add_argument("--idt_credentials_dir",type=str,default = "~/idt_credentials", help="A path to the place to search for you stored IDT API credentials. If no info.json file is found, then you will be prompted to enter new ones and they will be stored there")
-    parser.add_argument("--idt_threshold",type=float,default=7,help="automatically accept the first solution with IDT score under this threshold")
-    parser.add_argument('--idt_kind', type=str, help='kind of sequence to query', default='gene', choices = ['gene','gblock','gblock_hifi','eblock','old'])
-    parser.add_argument("--no_opt", action="store_true",help="bypass the gene optimization step. Useful for debugging new vectors")
-    parser.add_argument("--ramp_kmers_boost", type=float, default=0, help="increase the boost of the kmers objective after each failed optimization. Default: %(default)f")
-
+    parser.add_argument("proteins", type=str, nargs="+",
+                        help="Either one or more fasta files containing one or more protein sequences or one or more pdb files")
+    parser.add_argument("vector", type=str, nargs="?", default="./specifications/no_vector.gb",
+                        help="A genbank (.gb) file containing annotations in the domesticator format to control domesticator function")
+    parser.add_argument("--single_protein_fasta", action="store_true",
+                        help="Assign increasing chain letters in the order that they appear in the file. Lettering resets between files. This is useful for multiple insertions with a fasta file")
+    parser.add_argument("--nstruct", "-n", type=int, default=10,
+                        help="number of times to repeat optimization before picking one to return. Default: %(default)d")
+    parser.add_argument("--max-tries", "-m", type=int, default=3,
+                        help="number of times to restart optimization before giving up if no solution is found. Default: %(default)d")
+    parser.add_argument("--no-idt", action="store_true", help="Turn off complexity checking using IDT's API")
+    parser.add_argument("--idt-credentials-dir", "-c", type=str, default="~/.idt_credentials",
+                        help="A path to the place to search for you stored IDT API credentials. If no info.json file is found, then you will be prompted to enter new ones and they will be stored there")
+    parser.add_argument("--idt-threshold", type=float, default=7,
+                        help="automatically accept the first solution with IDT score under this threshold")
+    parser.add_argument('--idt_kind', type=str, help='kind of sequence to query', default='gene',
+                        choices=['gene', 'gblock', 'gblock-hifi', 'eblock', 'old'])
+    parser.add_argument("--no-opt", action="store_true",
+                        help="bypass the gene optimization step. Useful for debugging new vectors")
+    parser.add_argument("--ramp-kmers-boost", type=float, default=0,
+                        help="increase the boost of the kmers objective after each failed optimization. Default: %(default)f")
 
     parser.add_argument('--version', action='version', version='%(prog)s alpha 1.0')
 
     args = parser.parse_args()
-
 
     ###### finish imports ######
     # Standard library imports
@@ -51,12 +57,13 @@ def main():
         idt_user_info = idt.get_user_info(user_info_file)
 
     base_vector_record = input_parsing.load_vector_record(args.vector)
-    naive_vector_records = input_parsing.make_naive_vector_records(base_vector_record,args.proteins,args.single_protein_fasta)
+    naive_vector_records = input_parsing.make_naive_vector_records(base_vector_record, args.proteins,
+                                                                   args.single_protein_fasta)
 
     ###### optimize ######
     optimized_vector_solutions = []
-    for i,record in enumerate(naive_vector_records):
-        print("-"*40 + f" {i+1}/{len(naive_vector_records)} " + "-"*40)
+    for i, record in enumerate(naive_vector_records):
+        print("-" * 40 + f" {i + 1}/{len(naive_vector_records)} " + "-" * 40)
         print(f"Attempting optimization of {record.name}")
         initial_problem = DnaOptimizationProblem.from_record(record)
         if args.no_opt:
@@ -103,10 +110,10 @@ def main():
                 # if len(response[0]) == 0:
                 #       print("no issue!")
                 score_sum = 0
-                print(f"SOLUTION {i+1}:")
+                print(f"SOLUTION {i + 1}:")
                 for issue in response[0]:
-                        print(issue["Score"],issue["Name"])
-                        score_sum += issue["Score"]
+                    print(issue["Score"], issue["Name"])
+                    score_sum += issue["Score"]
                 print(f"Total Score: {score_sum}")
                 print()
                 idt_scores.append(score_sum)
@@ -115,17 +122,16 @@ def main():
                     solution_found = True
                     break
 
-            #find the avoid_kmers objective
+            # find the avoid_kmers objective
             for objective in initial_problem.objectives:
                 if type(objective) == MinimizeNumKmers:
                     objective.boost = objective.boost + args.ramp_kmers_boost
-                    print(f"DEBUG! boosting {str(objective)} by {args.ramp_kmers_boost}. Value is now {objective.boost}")
+                    print(
+                        f"DEBUG! boosting {str(objective)} by {args.ramp_kmers_boost}. Value is now {objective.boost}")
                     break
 
-
-
         if not args.no_idt:
-            best_idx = np.argmin(idt_scores)
+            best_idx = np.argmin(idt_scores)  # TODO check if score is acceptable for synthesis
         else:
             scores = [solution.objectives_evaluations().scores_sum() for solution in solutions]
             best_idx = np.argmin(scores)
@@ -138,41 +144,38 @@ def main():
     records_to_synthesize = []
     all_protein_params = []
     for optimized_vector_solution in optimized_vector_solutions:
-        #optimized_vector_solution.record stores the NAIVE RECORD, so we need to use to_record()
-        #however I think the annotations to the generated record (from to_record()) are bad, so instead let's just transplant the sequence
+        # optimized_vector_solution.record stores the NAIVE RECORD, so we need to use to_record()
+        # however I think the annotations to the generated record (from to_record()) are bad, so instead let's just transplant the sequence
         optimized_vector_record = optimized_vector_solution.record
         optimized_vector_record.seq = Seq(optimized_vector_solution.sequence)
 
-        Bio.SeqIO.write(optimized_vector_record, optimized_vector_record.name + ".gb","genbank")
+        Bio.SeqIO.write(optimized_vector_record, optimized_vector_record.name + ".gb", "genbank")
 
         fragment_to_synthesize = None
         for feature in optimized_vector_record.features:
-                if feature.type == "domesticator" and feature.qualifiers['label'] == ["synthesize"]:
-                    fragment_to_synthesize = feature.extract(optimized_vector_record.seq)
-                    break
+            if feature.type == "domesticator" and feature.qualifiers['label'] == ["synthesize"]:
+                fragment_to_synthesize = feature.extract(optimized_vector_record.seq)
+                break
         assert fragment_to_synthesize != ""
-        record_to_synthesize = Bio.SeqRecord.SeqRecord(seq=fragment_to_synthesize,id=optimized_vector_record.name,name=optimized_vector_record.name,description="")
+        record_to_synthesize = Bio.SeqRecord.SeqRecord(seq=fragment_to_synthesize, id=optimized_vector_record.name,
+                                                       name=optimized_vector_record.name, description="")
 
         records_to_synthesize.append(record_to_synthesize)
 
-        with open(optimized_vector_record.name + ".log",'w') as f:
+        with open(optimized_vector_record.name + ".log", 'w') as f:
             f.write(optimized_vector_solution.constraints_text_summary() + "\n")
             f.write(optimized_vector_solution.objectives_text_summary() + "\n")
 
         polypeptides = product_analysis.find_polypeptides(optimized_vector_record)
         protein_params = product_analysis.get_params(polypeptides)
-        all_protein_params.append(protein_params)
-        #TODO: Add support for detection of protease cleavage sites and printing of the fragment params
+        all_protein_params.append(
+            protein_params)  # TODO: Add support for detection of protease cleavage sites and printing of the fragment params
 
     pd.concat(all_protein_params).to_csv("translated_proteins.params")
-    Bio.SeqIO.write(records_to_synthesize, "order.dna.fasta","fasta")
+    Bio.SeqIO.write(records_to_synthesize, "order.dna.fasta", "fasta")
+
+    # ## start debug block -- gives user the steering wheel  # import code  # print("now entering interactive console. Press Ctrl-D to return to the script")  # code.interact(local=locals())  # ## end debug block
 
 
-
-    # ## start debug block -- gives user the steering wheel
-    # import code
-    # print("now entering interactive console. Press Ctrl-D to return to the script")
-    # code.interact(local=locals())
-    # ## end debug block
 if __name__ == "__main__":
     main()

@@ -18,7 +18,7 @@ def iterate_circular_sequence(start_index: int, sequence, step: int = 3) -> str:
     # the sequences and iterate the number of times equal to the length of the
     # starting sequence. That's memory intensive, but could be fast. Or you could
     # just keep track of indices and return slices. This is probably slower, but
-    # less memory hungery. I'll use option 2 for now. This is better, too, if you
+    # less memory hungry. I'll use option 2 for now. This is better, too, if you
     # don't really expect to step through the entire sequence such as what we'll
     # use it for
 
