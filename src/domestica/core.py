@@ -120,7 +120,7 @@ def run_pipeline(
                         continue
                 if candidate_solutions:
                     best_solution = min(candidate_solutions, key=lambda x: x["score"])
-                    row_data["DNA_Seq"] = best_solution["seq"]
+                    row_data["DNA_seq"] = best_solution["seq"]
 
                     # Log and store the corresponding score type
                     if not skip_idt:
