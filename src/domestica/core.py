@@ -104,13 +104,21 @@ def run_pipeline(
                             except Exception as e:
                                 logging.error(f"Failed to query IDT complexity: {e}")
                             if eval_score < idt_threshold:
-                                candidate_solutions.append({"seq": sequence_str, "score": eval_score})
+                                candidate_solutions.append({
+                                    "seq": sequence_str,
+                                    "score": eval_score,
+                                    "record": optimized_vector_record  # <-- ADDED
+                                })
                                 break
                         else:
                             # Use dnachisel's internal objective evaluation score
                             eval_score = optimized_vector_solution.objectives_evaluations().scores_sum()
 
-                        candidate_solutions.append({"seq": sequence_str, "score": eval_score})
+                        candidate_solutions.append({
+                            "seq": sequence_str,
+                            "score": eval_score,
+                            "record": optimized_vector_record  # <-- ADDED
+                        })
                     except NoSolutionError:
                         # Only skip THIS iteration, not the whole protein
                         logging.warning(f"No valid codon optimization solution found on attempt {n + 1}/{nstruct}.")
@@ -121,6 +129,7 @@ def run_pipeline(
                 if candidate_solutions:
                     best_solution = min(candidate_solutions, key=lambda x: x["score"])
                     row_data["DNA_seq"] = best_solution["seq"]
+                    row_data["DNA_record"] = best_solution["record"]  # <-- ADDED
 
                     # Log and store the corresponding score type
                     if not skip_idt:
@@ -138,10 +147,5 @@ def run_pipeline(
 
     # 3. Write Output
     logging.info(f"Writing {len(results)} records to {output_path}...")
-    df = pd.DataFrame(results)
-    if out_cols:
-        # Reindexing strictly forces the list order and adds requested columns
-        # (fills with NaN if they didn't exist in results)
-        df = df.reindex(columns=out_cols)
-    df.to_excel(output_path, index=False)
+    io_utils.write_output(results, output_path, out_cols)
     logging.info("Pipeline completed successfully!")
