@@ -8,6 +8,15 @@ PKA = {
 
 
 def net_charge(seq: str, pH: float = 7.4) -> float:
+    """Calculate the net charge of a protein sequence at a given pH.
+
+    Args:
+        seq: The amino acid sequence.
+        pH: The pH value for the calculation.
+
+    Returns:
+        The calculated net charge.
+    """
     if not seq: return 0.0
 
     nterm = (10 ** (PKA["Nterm"] - pH)) / (1 + 10 ** (PKA["Nterm"] - pH))
@@ -40,14 +49,28 @@ METRICS_REGISTRY = {
 }
 
 
-def register_metric(name: str, func: callable):
-    """Programmatically register a custom metric function."""
+from typing import Callable, List, Dict, Any
+
+def register_metric(name: str, func: Callable[[str, float], Any]):
+    """Programmatically register a custom metric function.
+
+    Args:
+        name: The name of the metric.
+        func: The function to calculate the metric, taking (sequence, ph) and returning any value.
+    """
     METRICS_REGISTRY[name] = func
 
 
-def calculate_selected_params(sequence: str, requested_params: list[str], ph: float = 7.4) -> dict:
-    """
-    Calculates only the requested protein parameters by iterating over the registry.
+def calculate_selected_params(sequence: str, requested_params: List[str], ph: float = 7.4) -> Dict[str, Any]:
+    """Calculates only the requested protein parameters by iterating over the registry.
+
+    Args:
+        sequence: The amino acid sequence.
+        requested_params: List of parameters to calculate.
+        ph: The pH value for relevant calculations.
+
+    Returns:
+        A dictionary mapping parameter names to their calculated values.
     """
     if not sequence or not requested_params:
         return {}

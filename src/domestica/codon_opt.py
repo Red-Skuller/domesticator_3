@@ -18,8 +18,17 @@ import numpy as np
 # Local application imports
 from domestica import idt
 from domestica.specifications.MinimizeNumKmers import MinimizeNumKmers
+from domestica.interfaces import SequenceOptimizer
 
 DEFAULT_SPECIFICATIONS_DICT["MinimizeNumKmers"] = MinimizeNumKmers
+
+class DnaChiselOptimizer(SequenceOptimizer):
+    def optimize(self, record: SeqRecord, max_tries: int = 10, **kwargs) -> DnaOptimizationProblem:
+        return optimize_naive_record(record, max_tries=max_tries)
+
+OPTIMIZERS_REGISTRY = {
+    "dnachisel": DnaChiselOptimizer()
+}
 
 def optimize_naive_record(record: SeqRecord, max_tries: int = 10 ):
     """

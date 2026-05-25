@@ -7,6 +7,8 @@ import argparse
 
 from base64 import b64encode
 from urllib import request, parse
+from domestica.interfaces import ComplexityEvaluator
+from typing import Tuple, List, Dict, Any
 
 def vprint(message: str, verbose: bool = False, **kwargs) -> None:
     if verbose:
@@ -20,32 +22,20 @@ def use_dir(directory: str | Path) -> Path:
 
 def ask_for_user_data(user_info_file):
     user_info = {}
-    idt_url = "https://www.idtdna.com/pages/tools/apidoc"
-    msg = (
-        f"The first time you use the IDT "
-        f"complexity function requires you to "
-        f"input your IDT username, password, "
-        f"API client ID and API client secret. "
-        f"These will be stored securely in "
-        f"'{os.path.abspath(user_info_file)}', "
-        f"which only you have access to. Before "
-        f"you begin, go to {idt_url} and follow "
-        f"all the directions under the 'Get "
-        f"access to the API' header. The client "
-        f"ID and client description can be "
-        f"anything. The client secret will be "
-        f"generated for you."
-    )
+    user_info["username"] = os.getenv("IDT_USERNAME")
+    user_info["password"] = os.getenv("IDT_PASSWORD")
+    user_info["ID"] = os.getenv("IDT_CLIENT_ID")
+    user_info["secret"] = os.getenv("IDT_CLIENT_SECRET")
 
-    print(msg)
-    print("1) Please enter your IDT account username: ")
-    user_info["username"] = input()
-    print("2) Please enter your IDT account password: ")
-    user_info["password"] = input()
-    print("3) Please enter you API client ID: ")
-    user_info["ID"] = input()
-    print("4) Please enter your API secret: ")
-    user_info["secret"] = input()
+    missing = [k for k, v in user_info.items() if not v]
+    if missing:
+        idt_url = "https://www.idtdna.com/pages/tools/apidoc"
+        raise RuntimeError(
+            f"Missing IDT credentials in environment variables: {', '.join(missing)}. "
+            f"Please set IDT_USERNAME, IDT_PASSWORD, IDT_CLIENT_ID, and IDT_CLIENT_SECRET. "
+            f"Alternatively, provide a valid credentials file at {user_info_file}. "
+            f"See {idt_url} for instructions on getting API access."
+        )
 
     return user_info
 
@@ -286,6 +276,18 @@ def get_complexity_score(seq, user_info, verbose: bool = False, kind: str = 'gen
 
     total_score = sum(issue.get("Score", 0) for issue in issues)
     return total_score, issues
+
+class IdtComplexityEvaluator(ComplexityEvaluator):
+    def evaluate(self, sequence: str, **kwargs) -> Tuple[float, List[Dict[str, Any]]]:
+        user_info = kwargs.get('user_info')
+        verbose = kwargs.get('verbose', False)
+        kind = kwargs.get('kind', 'gene')
+        gene_name = kwargs.get('gene_name')
+        return get_complexity_score(sequence, user_info, verbose=verbose, kind=kind, gene_name=gene_name)
+
+EVALUATORS_REGISTRY = {
+    "idt": IdtComplexityEvaluator()
+}
 
 if __name__ == "__main__":
     import argparse
