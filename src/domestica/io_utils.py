@@ -2,14 +2,19 @@ from pathlib import Path
 import pandas as pd
 from Bio import SeqIO
 import re
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 
 _AA_RE = re.compile(r"[^ACDEFGHIKLMNPQRSTVWY]")
 
 
 def clean_seq(seq: str) -> str:
-    """Return an uppercase protein sequence containing only the 20 standard AAs."""
+    """Return an uppercase protein sequence containing only the 20 standard AAs.
+
+    Args:
+        seq: The input sequence string.
+
+    Returns:
+        The cleaned, uppercase sequence.
+    """
     if seq is None: return ""
     s = str(seq).upper()
     s = re.sub(r"\s+", "", s)
@@ -17,75 +22,79 @@ def clean_seq(seq: str) -> str:
     return _AA_RE.sub("", s)
 
 
-def read_input(path: Path, name_col="Name", seq_col="Sequence") -> list[dict]:
-    """Reads FASTA or XLSX and returns a list of dicts: [{'id': ..., 'sequence': ...}]"""
-    ext = path.suffix.lower()
+from typing import Callable, List, Dict
+
+def read_fasta(path: Path, name_col: str, seq_col: str) -> List[Dict[str, str]]:
+    """Reads a FASTA file and returns a list of sequence records.
+
+    Args:
+        path: Path to the FASTA file.
+        name_col: Unused for FASTA but kept for signature consistency.
+        seq_col: Unused for FASTA but kept for signature consistency.
+
+    Returns:
+        List of dictionaries with 'id' and 'sequence'.
+    """
     records = []
-
-    if ext in [".fasta", ".fa"]:
-        for rec in SeqIO.parse(path, "fasta"):
-            records.append({"id": rec.id, "sequence": clean_seq(str(rec.seq))})
-
-    elif ext in [".xlsx"]:
-        df = pd.read_excel(path)
-        # Assuming the standard columns are Name and Sequence or fallback to indexes
-        name_col = name_col if name_col in df.columns else df.columns[0]
-        seq_col = seq_col if seq_col in df.columns else df.columns[1]
-
-        for _, row in df.iterrows():
-            records.append({
-                "id": str(row[name_col]),
-                "sequence": clean_seq(str(row[seq_col]))
-            })
-    else:
-        raise ValueError(f"Unsupported file extension: {ext}")
-
+    for rec in SeqIO.parse(path, "fasta"):
+        records.append({"id": rec.id, "sequence": clean_seq(str(rec.seq))})
     return records
 
 
-def write_output(results: list[dict], output_path: Path, out_cols: list[str] = None):
-    """Write pipeline results to .xlsx, .fasta, or .gb based on file extension."""
-    ext = output_path.suffix.lower()
+def read_xlsx(path: Path, name_col: str, seq_col: str) -> List[Dict[str, str]]:
+    """Reads an Excel file and returns a list of sequence records.
 
-    if ext == ".xlsx":
-        # Remove the 'DNA_record' object before passing to pandas to avoid serialization errors
-        clean_results = [{k: v for k, v in row.items() if k != 'DNA_record'} for row in results]
-        df = pd.DataFrame(clean_results)
-        if out_cols:
-            df = df.reindex(columns=out_cols)
-        df.to_excel(output_path, index=False)
+    Args:
+        path: Path to the Excel file.
+        name_col: Column header for names.
+        seq_col: Column header for sequences.
 
-    elif ext in [".fasta", ".fa", ".gb", ".gbk"]:
-        records = []
-        for row in results:
-            safe_id = str(row.get("Name", "unknown"))[:16]
+    Returns:
+        List of dictionaries with 'id' and 'sequence'.
+    """
+    df = pd.read_excel(path)
+    # Assuming the standard columns are Name and Sequence or fallback to indexes
+    actual_name_col = name_col if name_col in df.columns else df.columns[0]
+    actual_seq_col = seq_col if seq_col in df.columns else df.columns[1]
 
-            # If generating a GenBank file AND we preserved the fully annotated vector record
-            if ext in [".gb", ".gbk"] and "DNA_record" in row:
-                rec = row["DNA_record"]
-                rec.id = safe_id
-                rec.name = safe_id
-                rec.annotations["molecule_type"] = "DNA"
-                records.append(rec)
+    records = []
+    for _, row in df.iterrows():
+        records.append({
+            "id": str(row[actual_name_col]),
+            "sequence": clean_seq(str(row[actual_seq_col]))
+        })
+    return records
 
-            # Fallback for FASTA (or if optimization was skipped/failed)
-            else:
-                seq_str = row.get("DNA_seq") or row.get("AA_Seq_Final") or row.get("AA_seq")
-                if not seq_str:
-                    continue
+READERS_REGISTRY: Dict[str, Callable[[Path, str, str], List[Dict[str, str]]]] = {
+    ".fasta": read_fasta,
+    ".fa": read_fasta,
+    ".xlsx": read_xlsx,
+}
 
-                rec = SeqRecord(
-                    Seq(seq_str),
-                    id=safe_id,
-                    name=safe_id,
-                    description="Domestica Pipeline Output"
-                )
-                if ext in [".gb", ".gbk"]:
-                    rec.annotations["molecule_type"] = "DNA" if "DNA_seq" in row else "protein"
 
-                records.append(rec)
+def register_reader(ext: str, func: Callable[[Path, str, str], List[Dict[str, str]]]):
+    """Register a new file reader for a given extension.
 
-        fmt = "genbank" if ext in [".gb", ".gbk"] else "fasta"
-        SeqIO.write(records, output_path, fmt)
-    else:
-        raise ValueError(f"Unsupported output extension: {ext}")
+    Args:
+        ext: File extension including the dot (e.g., '.fasta').
+        func: Reader function.
+    """
+    READERS_REGISTRY[ext.lower()] = func
+
+
+def read_input(path: Path, name_col: str = "Name", seq_col: str = "Sequence") -> List[Dict[str, str]]:
+    """Reads input using the appropriate reader from the registry.
+
+    Args:
+        path: Path to the input file.
+        name_col: Column header for names (for Excel).
+        seq_col: Column header for sequences (for Excel).
+
+    Returns:
+        List of dictionaries with 'id' and 'sequence'.
+    """
+    ext = path.suffix.lower()
+    reader = READERS_REGISTRY.get(ext)
+    if not reader:
+        raise ValueError(f"Unsupported file extension: {ext}")
+    return reader(path, name_col, seq_col)

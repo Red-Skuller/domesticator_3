@@ -1,102 +1,94 @@
-import argparse
+import typer
+import yaml
 import logging
 from pathlib import Path
+from typing import List, Optional
+from rich.logging import RichHandler
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-# Assuming flat local directory imports structure.
-from domestica.core import run_pipeline
+from domestica.core import run_pipeline_with_config
+from domestica.models import PipelineConfig
 
+app = typer.Typer(help="Protein Designer Pipeline: Excel/FASTA -> Params -> DNA Opt -> Excel")
+console = Console()
 
 def setup_logging(verbose: bool):
-    """Sets up terminal output. Verbose mode shows DEBUG info."""
+    """Sets up terminal output using Rich."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%H:%M:%S"
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, console=console)]
     )
 
+@app.command()
+def run(
+    input_path: Optional[Path] = typer.Option(None, "--input", "-i", help="Input fasta (.fasta) or Excel file (.xlsx)"),
+    output_path: Optional[Path] = typer.Option(None, "--output", "-o", help="Output Excel file (.xlsx)"),
+    params: Optional[List[str]] = typer.Option(None, "--params", help="Select which protein parameters to calculate."),
+    optimize: Optional[bool] = typer.Option(None, "--optimize", help="Perform codon optimization"),
+    vector: Optional[Path] = typer.Option(None, "--vector", "-v", help="Genbank vector file for insertion"),
+    nstruct: Optional[int] = typer.Option(None, "--nstruct", "-n", help="Number of optimized DNA structures"),
+    ph: Optional[float] = typer.Option(None, "--ph", help="pH for net charge calculation"),
+    name_col: Optional[str] = typer.Option(None, "--name-col", help="Column header for protein names"),
+    seq_col: Optional[str] = typer.Option(None, "--seq-col", help="Column header for protein sequences"),
+    idt_credentials_dir: Optional[str] = typer.Option(None, "--idt-credentials-dir", help="Path to IDT API credentials"),
+    skip_idt: Optional[bool] = typer.Option(None, "--skip-idt", help="Skip IDT complexity checking"),
+    idt_type: Optional[str] = typer.Option(None, "--idt-type", help="Type of sequence to query IDT for"),
+    idt_threshold: Optional[float] = typer.Option(None, "--idt-threshold", help="IDT score threshold"),
+    n_tag: Optional[str] = typer.Option(None, "--n-tag", help="N-terminal tag for analysis"),
+    c_tag: Optional[str] = typer.Option(None, "--c-tag", help="C-terminal tag for analysis"),
+    out_cols: Optional[List[str]] = typer.Option(None, "--out-cols", help="Order and selection of output columns"),
+    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to a YAML configuration file"),
+    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging")
+):
+    setup_logging(verbose)
 
-def build_parser() -> argparse.ArgumentParser:
-    """Configures the command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Protein Designer Pipeline: Excel/FASTA -> Params -> DNA Opt -> Excel"
-    )
+    config_data = {}
+    if config_file:
+        logging.info(f"Loading configuration from {config_file}")
+        with open(config_file, "r") as f:
+            config_data = yaml.safe_load(f)
 
-    # Required File IO
-    parser.add_argument("-i", "--input", required=True, type=Path, help="Input fasta (.fasta) or Excel file (.xlsx)")
-    parser.add_argument("-o", "--output", required=True, type=Path, help="Output Excel file (.xlsx)")
+    # Merge CLI options into config_data, overriding if not None
+    cli_options = {
+        "input_path": input_path,
+        "output_path": output_path,
+        "params": params,
+        "optimize": optimize,
+        "vector_path": vector,
+        "nstruct": nstruct,
+        "ph": ph,
+        "name_col": name_col,
+        "seq_col": seq_col,
+        "idt_credentials_dir": Path(idt_credentials_dir) if idt_credentials_dir else None,
+        "skip_idt": skip_idt,
+        "idt_type": idt_type,
+        "idt_threshold": idt_threshold,
+        "n_tag": n_tag,
+        "c_tag": c_tag,
+        "out_cols": out_cols,
+    }
+    for key, value in cli_options.items():
+        if value is not None:
+            config_data[key] = value
 
-    # Feature toggles
-    parser.add_argument(
-        "--params",
-        nargs="+",
-        default=[],
-        choices=["mw", "pi", "net_charge", "gravy", "length", "all"],
-        help="Select which protein parameters to calculate. Use 'all' for all parameters."
-    )
-    parser.add_argument("--optimize", action="store_true",
-                        help="Perform codon optimization to generate nucleotide sequences")
+    try:
+        config = PipelineConfig(**config_data)
+    except Exception as e:
+        logging.error(f"Configuration error: {e}")
+        raise typer.Exit(code=1)
 
-    # Optional parameters
-    parser.add_argument("--name-col", default="Name", help="Column header for protein names (Default: Name)")
-    parser.add_argument("--seq-col", default="Sequence", help="Column header for protein sequences (Default: Sequence)")
-    parser.add_argument("-n", "--nstruct", type=int, default=10,
-                        help="Number of optimized DNA structures to generate per input (Default: 1)")
-    parser.add_argument("--ph", type=float, default=7.4, help="pH for net charge calculation (Default: 7.4)")
-    parser.add_argument("--n-tag", type=str, default="",
-                        help="Amino acid sequence to append to the N-terminus (used for analysis ONLY)")
-    parser.add_argument("--c-tag", type=str, default="",
-                        help="Amino acid sequence to append to the C-terminus (used for analysis ONLY)")
-
-    parser.add_argument("--out-cols", nargs="+", default=None,
-                        help="Specify the exact order and selection of output columns (e.g., Name AA_Seq N_tag Final_AA_seq final_DNA_seq mw pi).")
-
-    # Optional DNA optimization and IDT arguments
-    parser.add_argument("--idt_credentials_dir", type=str, default="~/.idt_credentials",
-                        help="A path to the place to search for you stored IDT API credentials. If no info.json file is found, then you will be prompted to enter new ones and they will be stored there")
-    parser.add_argument("-v", "--vector", type=Path, help="Genbank vector file for insertion")
-    parser.add_argument("--skip-idt", action="store_true", help="Skip IDT complexity checking API calls")
-    parser.add_argument('--idt_type', type=str, help='type of sequence to query', default='gene',
-                        choices=['gene', 'gblock', 'gblock_hifi', 'eblock', 'old'])
-    parser.add_argument("--idt_threshold", type=float, default=7,
-                        help="automatically accept the first solution with IDT score under this threshold")
-    # Utilities
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-
-    return parser
-
-
-def main():
-    parser = build_parser()
-    args = parser.parse_args()
-    setup_logging(args.verbose)
-
-    logging.info(f"Starting pipeline...")
-    logging.info(f"Reading sequences from {args.input}...")
-
-    if not args.params and not args.optimize:
+    if not config.params and not config.optimize:
         logging.warning("Neither --params nor --optimize was selected. The output will just mirror the input.")
 
-    # Pass configuration to core pipeline
-    run_pipeline(
-        input_path=args.input,
-        output_path=args.output,
-        params=args.params,
-        optimize=args.optimize,
-        vector_path=args.vector,
-        nstruct=args.nstruct,
-        skip_idt=args.skip_idt,
-        ph=args.ph,
-        name_col=args.name_col,
-        seq_col=args.seq_col,
-        idt_type=args.idt_type,
-        idt_credentials_dir=args.idt_credentials_dir,
-        idt_threshold=args.idt_threshold,
-        n_tag=args.n_tag,
-        c_tag=args.c_tag,
-        out_cols=args.out_cols
-    )
+    logging.info("Starting pipeline...")
+    run_pipeline_with_config(config)
 
+def main():
+    app()
 
 if __name__ == "__main__":
     main()

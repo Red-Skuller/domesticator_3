@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Generator, List
+from typing import Generator, List, Dict
 import warnings
 from pathlib import Path
 
@@ -13,11 +13,15 @@ from dnachisel import reverse_translate
 
 
 def load_vector_record(vector_filepath: Path) -> SeqRecord.SeqRecord:
-    """Return Biopython SeqRecord.SeqRecords
+    """Return Biopython SeqRecord.SeqRecords.
 
-    Essentially a wrapper around Biopython SeqIO machinery to read a single vector file
+    Essentially a wrapper around Biopython SeqIO machinery to read a single vector file.
 
-    rdkibler 210320
+    Args:
+        vector_filepath: Path to the vector file.
+
+    Returns:
+        A SeqRecord object representing the vector.
     """
     records = list(SeqIO.parse(vector_filepath, "genbank"))
 
@@ -29,19 +33,29 @@ def load_vector_record(vector_filepath: Path) -> SeqRecord.SeqRecord:
 
     return record
 
-def load_gb_as_naive(filepaths: List[str]) -> list:
+def load_gb_as_naive(filepaths: List[str]) -> List[SeqRecord.SeqRecord]:
+    """Load GenBank files as naive records.
+
+    Args:
+        filepaths: List of paths to GenBank files.
+
+    Returns:
+        List of SeqRecord objects.
+    """
     records = []
     for filepath in filepaths:
         records.append(SeqIO.read(filepath, "genbank"))
     return records
 
-def load_insert_seq(sequence) -> SeqRecord.SeqRecord:
-    """returns Biopython SeqRecord.SeqRecord
 
-    A function which returns a SeqRecord holding DNA
-    encoding the protein sequences taken from the input files
+def load_insert_seq(sequence: str) -> SeqRecord.SeqRecord:
+    """Returns a Biopython SeqRecord holding DNA encoding the protein sequence.
 
-    rdkibler 220118
+    Args:
+        sequence: Amino acid sequence.
+
+    Returns:
+        A SeqRecord object representing the insert DNA.
     """
 
     new_dna_seq = Seq(reverse_translate(sequence))
@@ -57,21 +71,19 @@ def load_insert_seq(sequence) -> SeqRecord.SeqRecord:
 
 
 def load_inserts(
-        filenames, increasing_chain_fasta
-) -> Generator[SeqRecord.SeqRecord, None, None]:
-    """yields Biopython SeqRecord.SeqRecords
+    filenames: List[str], increasing_chain_fasta: bool
+) -> Generator[List[SeqRecord.SeqRecord], None, None]:
+    """Yields lists of Biopython SeqRecords.
 
-    A generator function which always returns a list of SeqRecords holding DNA
-    encoding the protein sequences taken from the input files, but how it returns
-    them differs by input type.
+    A generator function which returns lists of SeqRecords holding DNA
+    encoding the protein sequences taken from the input files.
 
-    If the filename is a fasta file, then each line is returned as a separate record
-    (list of length 1)
+    Args:
+        filenames: List of file paths to load.
+        increasing_chain_fasta: Whether to use increasing chain letters for FASTA records.
 
-    If the filename is a pdb file, then each chain is extracted and they are
-    returned together
-
-    rdkibler 210320
+    Yields:
+        Lists of SeqRecord objects.
     """
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     for filename in filenames:
@@ -123,14 +135,17 @@ def load_inserts(
                 yield records
 
 
-def get_insert_locations(record) -> dict:
-    """returns a dict of chain ID to dnachisel(?) locations
+def get_insert_locations(record: SeqRecord.SeqRecord) -> Dict[str, FeatureLocation]:
+    """Returns a dict of chain ID to feature locations.
 
     This function looks through the record for features of type "misc_feature"
-    and name matching the form "!insert(?)" where "?" is a chain letter. Returns a
-    dict of chain letter/ID to the location where it's supposed to go.
+    and name matching the form "!insert(?)" where "?" is a chain letter.
 
-    rdkibler 210320
+    Args:
+        record: The SeqRecord to search.
+
+    Returns:
+        A dictionary mapping chain letters to FeatureLocation objects.
     """
 
     location_dict = {}
@@ -145,12 +160,21 @@ def get_insert_locations(record) -> dict:
     return location_dict
 
 
-def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
-    """Returns a modified seqrecord
+def replace_sequence_in_record(
+    record: SeqRecord.SeqRecord, location: FeatureLocation, insert: SeqRecord.SeqRecord
+) -> SeqRecord.SeqRecord:
+    """Returns a modified SeqRecord with the insert sequence.
 
-    This function was borrowed from Domesticator1. It replaces the sequence in the record
-    and (importantly) adjusts all the locations of the annotations if possible. It returns
-    the modified SeqRecord
+    Replaces the sequence at the specified location with the insert sequence
+    and adjusts all feature locations accordingly.
+
+    Args:
+        record: The original SeqRecord.
+        location: The location to replace.
+        insert: The SeqRecord to insert.
+
+    Returns:
+        The modified SeqRecord.
     """
 
     # I don't know if this is right. What does the strand number mean? --rdkibler 210320
@@ -275,11 +299,21 @@ def replace_sequence_in_record(record, location, insert) -> SeqRecord.SeqRecord:
 
 
 def make_naive_vector_records(
-        base_vector_record, protein_filepaths, increasing_chain_fasta=False, do_not_append_vector_name=False
-) -> list:
-    """returns a list of Biopython SeqRecord.SeqRecords which have randomly reverse-translated inserts in the base_vector_record
+    base_vector_record: SeqRecord.SeqRecord,
+    protein_filepaths: List[str],
+    increasing_chain_fasta: bool = False,
+    do_not_append_vector_name: bool = False,
+) -> List[SeqRecord.SeqRecord]:
+    """Returns a list of SeqRecords with randomly reverse-translated inserts.
 
-    rdkibler 210320
+    Args:
+        base_vector_record: The base vector SeqRecord.
+        protein_filepaths: Paths to protein sequence files.
+        increasing_chain_fasta: Whether to use increasing chain letters for FASTA.
+        do_not_append_vector_name: Whether to omit the vector name from the record name.
+
+    Returns:
+        List of generated SeqRecord objects.
     """
 
     output_records = []
@@ -325,13 +359,16 @@ def make_naive_vector_records(
 
 
 def make_naive_vector_record_by_seq(
-        base_vector_record, amino_acid_sequence
+    base_vector_record: SeqRecord.SeqRecord, amino_acid_sequence: str
 ) -> SeqRecord.SeqRecord:
-    """returns Biopython SeqRecord.SeqRecord
+    """Returns a SeqRecord with the protein sequence inserted into the vector.
 
-    A function which randomly reverse translates the given amino_acid_sequence and insert it into the the vector.
+    Args:
+        base_vector_record: The base vector SeqRecord.
+        amino_acid_sequence: The amino acid sequence to insert.
 
-    rdkibler 210320
+    Returns:
+        The generated SeqRecord.
     """
 
     insert_locations = get_insert_locations(base_vector_record)
