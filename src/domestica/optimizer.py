@@ -51,8 +51,12 @@ def _get_codon_table(template_record: SeqRecord) -> str:
         if any("!INSERT" in str(item).upper() for item in labels):
             for item in labels:
                 match = re.search(r'@EnforceTranslation\s*\(\s*genetic_table\s*=\s*["\']([^"\']+)["\']\s*\)', str(item))
-                if match: return match.group(1).strip().lower()
+                if match:
+                    table_name = match.group(1).strip().lower()
+                    logger.debug("Extracted genetic table rule: '%s' from feature qualifiers.", table_name)
+                    return table_name
             break
+    logger.debug("No custom genetic table definition discovered. Defaulting to 'Standard'.")
     return "Standard"
 
 
@@ -65,10 +69,12 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
             break
 
     if not insert_feature:
+        logger.error("Template structural invalidation: Failed to discover an 'INSERT' tag indicator within sequence features.")
         raise ValueError("Template vector must contain a feature with label or note 'INSERT'.")
 
     start, end = int(insert_feature.location.start), int(insert_feature.location.end)
     old_length, new_length = end - start, len(insert_dna)
+    logger.debug("Modifying sequence template target interval locus boundaries: [%d, %d] (Original Len: %d, Insert Len: %d)", start, end, old_length, new_length)
 
     left_flank = template_record[:start]
     right_flank = template_record[end:]
@@ -96,15 +102,19 @@ def optimize_sequence(
         template_path: Path,
         evaluator: Optional[Callable[[str], Tuple[bool, Optional[float]]]] = None
 ) -> Tuple[Optional[str], str, bool, Optional[float], Optional[SeqRecord]]:
+    logger.debug("Loading single record vector structural profile from path: %s", template_path)
     records = list(SeqIO.parse(template_path, "genbank"))
-    if len(records) != 1: raise ValueError("Template must contain exactly one record.")
+    if len(records) != 1:
+        logger.error("Template structure constraint error: Expected 1 record profile, discovered %d.", len(records))
+        raise ValueError("Template must contain exactly one record.")
     template_record = records[0]
 
-    # Structural branch based on amino acid sequence availability
     if protein_sequence and protein_sequence.strip():
+        logger.debug("Protein sequence input confirmed. Initiating algorithmic reverse-translation mappings.")
         naive_dna = reverse_translate(protein_sequence, table=_get_codon_table(template_record))
         merged_record = _insert_into_template(template_record, naive_dna)
     else:
+        logger.info("Empty or null protein sequence entry. Directing sequence execution strategy onto base template.")
         naive_dna = None
         merged_record = template_record
 
@@ -115,17 +125,25 @@ def optimize_sequence(
     problem = None
 
     while trial < max_tries:
+        logger.debug("Beginning sequence optimization cycle loop attempt %d/%d (Iteration Limit: %d)", trial + 1, max_tries, current_max_iters)
         try:
             problem = dc.DnaOptimizationProblem.from_record(merged_record, specifications_dict=custom_specs)
+            logger.debug("Evaluating heuristic local constraint resolution criteria...")
             problem.resolve_constraints()
-            problem.optimize()
+            logger.debug("Executing core dnachisel local optimization operations...")
+            #problem.optimize()
+            problem.optimize_with_report(target="/home/lukah/Downloads/report.zip")
+            logger.debug("Executing final structural global constraint consistency verification checks...")
             problem.resolve_constraints(final_check=True)
+            logger.debug("Optimization problem constraints converged successfully on attempt loop %d.", trial + 1)
             break
-        except dc.NoSolutionError:
+        except dc.NoSolutionError as nse:
+            logger.warning("Optimization pass iteration %d failed to converge under current problem parameters: %s", trial + 1, str(nse))
             current_max_iters += 1000
             trial += 1
             if trial >= max_tries:
-                raise dc.NoSolutionError("Failed to converge on a valid optimization solution.")
+                logger.error("Critical convergence breakdown: Complete search space exhausted without locating acceptable structural solutions.")
+                raise dc.NoSolutionError("Failed to converge on a valid optimization solution.") from nse
 
     if protein_sequence and protein_sequence.strip():
         insert_start, insert_end = 0, 0
@@ -140,6 +158,12 @@ def optimize_sequence(
 
     is_accepted, final_score = True, None
     if evaluator:
-        is_accepted, final_score = evaluator(problem.sequence)
+        logger.info("Invoking vendor API sequence optimization score validation checks.")
+        try:
+            is_accepted, final_score = evaluator(problem.sequence)
+            logger.info("Vendor evaluation assessment processing completed. Acceptance Status: %s, Assigned Metrics: %s", is_accepted, final_score)
+        except Exception:
+            logger.exception("Critical communication or validation exception thrown during external vendor complexity evaluation processing.")
+            raise
 
     return naive_dna, optimized_output_dna, is_accepted, final_score, problem.record

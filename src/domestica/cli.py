@@ -17,8 +17,14 @@ logger = logging.getLogger(__name__)
 _worker_evaluator = None
 
 
-def _init_worker(vendor_target: Optional[str], product: str) -> None:
+def _init_worker(vendor_target: Optional[str], product: str, verbose: bool) -> None:
     global _worker_evaluator
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        stream=sys.stdout
+    )
+    logger.debug("Worker process initialized. Vendor: %s, Product: %s, Verbose: %s", vendor_target, product, verbose)
     if vendor_target:
         _worker_evaluator = get_evaluator(vendor_target, product)
     else:
@@ -27,6 +33,7 @@ def _init_worker(vendor_target: Optional[str], product: str) -> None:
 
 def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
     global _worker_evaluator
+    logger.info("Starting processing for record ID: %s", record.record_id)
     try:
         evaluator_func = _worker_evaluator.evaluate if _worker_evaluator else None
 
@@ -35,12 +42,14 @@ def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
             template_path=template_path,
             evaluator=evaluator_func
         )
+        logger.info("Successfully optimized record ID: %s. Accepted: %s, Score: %s", record.record_id, accepted, score)
         return ResultRow(
             record_id=record.record_id, protein_sequence=record.protein_sequence,
             naive_dna_sequence=naive, optimized_sequence=opt_seq, vendor_score=score,
             accepted=accepted, status="SUCCESS", optimized_record=opt_rec
         )
     except Exception as e:
+        logger.exception("Execution failed for record ID: %s due to an unhandled exception.", record.record_id)
         return ResultRow(
             record_id=record.record_id, protein_sequence=record.protein_sequence,
             status="FAILED", error_message=str(e)
@@ -65,28 +74,39 @@ def optimize(
         stream=sys.stdout
     )
 
+    logger.info("Initializing optimization pipeline workflow.")
     config = PipelineConfig(vendor_target=vendor, product=product, max_workers=max_workers)
+    logger.debug("Pipeline Configuration: %s", config.model_dump())
 
     if input_path is not None:
+        logger.debug("Input path provided: %s", input_path)
         records = parse_input_file(input_path)
     else:
-        # Optimization execution target directly transitions to the base template file
+        logger.info("No input path provided. Transitioning optimization execution target directly to base template.")
         records = [SequenceRecord(record_id="optimized_template", protein_sequence=None)]
 
     results = []
 
+    logger.info("Spawning ProcessPoolExecutor with %d workers.", config.max_workers)
     with concurrent.futures.ProcessPoolExecutor(
             max_workers=config.max_workers,
             initializer=_init_worker,
-            initargs=(config.vendor_target, config.product)
+            initargs=(config.vendor_target, config.product, verbose)
     ) as executor:
         future_to_record = {
             executor.submit(_worker_task, r, template_path): r for r in records
         }
         for future in concurrent.futures.as_completed(future_to_record):
-            results.append(future.result())
-    print(results)
+            rec = future_to_record[future]
+            try:
+                res = future.result()
+                results.append(res)
+                logger.debug("Retrieved future result execution status for record %s: %s", rec.record_id, res.status)
+            except Exception:
+                logger.exception("Critical error retrieving process future result for record %s.", rec.record_id)
+
     write_output_file(results, output_path)
+    logger.info("Optimization process pipeline complete.")
 
 
 if __name__ == "__main__":
