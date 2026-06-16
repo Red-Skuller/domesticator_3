@@ -67,11 +67,13 @@ class IDTEvaluator(ComplexityEvaluator):
             raise
 
     def evaluate(self, sequence: str) -> Tuple[bool, Optional[float]]:
+        payload = [{"Name": "Target", "Sequence": sequence}]
         for attempt in range(6):
             logger.debug("Dispatching sequence request validation block to IDT endpoint. Attempt: %d/6", attempt + 1)
+            logger.debug("IDT Request Payload: %s", payload)
             try:
                 response = self.http_client.post(
-                    self.endpoint, json=[{"Name": "Target", "Sequence": sequence}],
+                    self.endpoint, json=payload,
                     headers={"Authorization": f"Bearer {self._get_token()}"}
                 )
                 if response.status_code == 401:
@@ -87,6 +89,7 @@ class IDTEvaluator(ComplexityEvaluator):
                     time.sleep(backoff)
                     continue
 
+                logger.debug("IDT Response Status: %d, Body: %s", response.status_code, response.text)
                 response.raise_for_status()
                 res = response.json()[0]
                 score = res.get("ComplexityScore")

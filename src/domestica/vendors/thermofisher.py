@@ -57,13 +57,15 @@ class ThermoFisherEvaluator(ComplexityEvaluator):
     def evaluate(self, sequence: str) -> Tuple[bool, Optional[float]]:
         cleaned_sequence = "".join(filter(str.isalpha, sequence.upper()))
         url = "https://api.thermofisher.com/api/store/geneart/design-services/diagnostics/v1"
+        payload = {"acgtSequence": cleaned_sequence, "product": self.api_product_value}
 
         while True:
             logger.debug("Dispatching post sequence validation request payload to ThermoFisher diagnostics API.")
+            logger.debug("ThermoFisher Request Payload: %s", payload)
             try:
                 response = self.http_client.post(
                     url,
-                    json={"acgtSequence": cleaned_sequence, "product": self.api_product_value},
+                    json=payload,
                     headers={"Authorization": f"Bearer {self._get_token()}"},
                     params={"waitSec": 60}
                 )
@@ -77,6 +79,7 @@ class ThermoFisherEvaluator(ComplexityEvaluator):
                     time.sleep(10)
                     continue
 
+                logger.debug("ThermoFisher Response Status: %d, Body: %s", response.status_code, response.text)
                 response.raise_for_status()
                 complexity = response.json().get("content", {}).get("complexity", "red").lower()
                 logger.debug("ThermoFisher evaluation structural assessment classification score returned: '%s'", complexity)
