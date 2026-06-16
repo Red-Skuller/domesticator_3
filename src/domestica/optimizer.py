@@ -77,7 +77,7 @@ def _get_codon_table(template_record: SeqRecord) -> str:
                 for item in labels:
                     match = re.search(regex, str(item))
                     if match:
-                        table_name = match.group("value").strip().lower()
+                        table_name = match.group("value").strip()
                         logger.debug("Extracted genetic table rule: '%s' from overlapping feature qualifiers.", table_name)
                         return table_name
 
