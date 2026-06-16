@@ -1,94 +1,93 @@
-import typer
-import yaml
+import os
+import sys
 import logging
+import concurrent.futures
 from pathlib import Path
-from typing import List, Optional
-from rich.logging import RichHandler
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from typing import Optional
 
-from domestica.core import run_pipeline_with_config
-from domestica.models import PipelineConfig
+import typer
+from domestica.schema import PipelineConfig, SequenceRecord, ResultRow
+from domestica.io import parse_input_file, write_output_file
+from domestica.optimizer import optimize_sequence
+from domestica.vendors.base import get_evaluator
 
-app = typer.Typer(help="Protein Designer Pipeline: Excel/FASTA -> Params -> DNA Opt -> Excel")
-console = Console()
+app = typer.Typer(name="domestica", add_completion=False)
+logger = logging.getLogger(__name__)
 
-def setup_logging(verbose: bool):
-    """Sets up terminal output using Rich."""
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, console=console)]
-    )
+_worker_evaluator = None
+
+
+def _init_worker(vendor_target: Optional[str], product: str) -> None:
+    global _worker_evaluator
+    if vendor_target:
+        _worker_evaluator = get_evaluator(vendor_target, product)
+    else:
+        _worker_evaluator = None
+
+
+def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
+    global _worker_evaluator
+    try:
+        evaluator_func = _worker_evaluator.evaluate if _worker_evaluator else None
+
+        naive, opt_seq, accepted, score, opt_rec = optimize_sequence(
+            protein_sequence=record.protein_sequence,
+            template_path=template_path,
+            evaluator=evaluator_func
+        )
+        return ResultRow(
+            record_id=record.record_id, protein_sequence=record.protein_sequence,
+            naive_dna_sequence=naive, optimized_sequence=opt_seq, vendor_score=score,
+            accepted=accepted, status="SUCCESS", optimized_record=opt_rec
+        )
+    except Exception as e:
+        return ResultRow(
+            record_id=record.record_id, protein_sequence=record.protein_sequence,
+            status="FAILED", error_message=str(e)
+        )
+
 
 @app.command()
-def run(
-    input_path: Optional[Path] = typer.Option(None, "--input", "-i", help="Input fasta (.fasta) or Excel file (.xlsx)"),
-    output_path: Optional[Path] = typer.Option(None, "--output", "-o", help="Output Excel file (.xlsx)"),
-    params: Optional[List[str]] = typer.Option(None, "--params", help="Select which protein parameters to calculate."),
-    optimize: Optional[bool] = typer.Option(None, "--optimize", help="Perform codon optimization"),
-    vector: Optional[Path] = typer.Option(None, "--vector", "-v", help="Genbank vector file for insertion"),
-    nstruct: Optional[int] = typer.Option(None, "--nstruct", "-n", help="Number of optimized DNA structures"),
-    ph: Optional[float] = typer.Option(None, "--ph", help="pH for net charge calculation"),
-    name_col: Optional[str] = typer.Option(None, "--name-col", help="Column header for protein names"),
-    seq_col: Optional[str] = typer.Option(None, "--seq-col", help="Column header for protein sequences"),
-    idt_credentials_dir: Optional[str] = typer.Option(None, "--idt-credentials-dir", help="Path to IDT API credentials"),
-    skip_idt: Optional[bool] = typer.Option(None, "--skip-idt", help="Skip IDT complexity checking"),
-    idt_type: Optional[str] = typer.Option(None, "--idt-type", help="Type of sequence to query IDT for"),
-    idt_threshold: Optional[float] = typer.Option(None, "--idt-threshold", help="IDT score threshold"),
-    n_tag: Optional[str] = typer.Option(None, "--n-tag", help="N-terminal tag for analysis"),
-    c_tag: Optional[str] = typer.Option(None, "--c-tag", help="C-terminal tag for analysis"),
-    out_cols: Optional[List[str]] = typer.Option(None, "--out-cols", help="Order and selection of output columns"),
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to a YAML configuration file"),
-    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging")
-):
-    setup_logging(verbose)
+def optimize(
+        input_path: Optional[Path] = typer.Argument(None,
+                                                    help="Path to inputs. If omitted, the template itself is optimized.",
+                                                    exists=True),
+        output_path: Path = typer.Argument(..., help="Path for outputs."),
+        template_path: Path = typer.Option(..., "--template", "-t", exists=True),
+        vendor: Optional[str] = typer.Option(None, "--vendor", "-v"),
+        product: str = typer.Option("eblocks", "--product", "-p"),
+        max_workers: int = typer.Option(max(1, (os.cpu_count() or 2) - 1), "--workers", "-w"),
+        verbose: bool = typer.Option(False, "--verbose")
+) -> None:
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        stream=sys.stdout
+    )
 
-    config_data = {}
-    if config_file:
-        logging.info(f"Loading configuration from {config_file}")
-        with open(config_file, "r") as f:
-            config_data = yaml.safe_load(f)
+    config = PipelineConfig(vendor_target=vendor, product=product, max_workers=max_workers)
 
-    # Merge CLI options into config_data, overriding if not None
-    cli_options = {
-        "input_path": input_path,
-        "output_path": output_path,
-        "params": params,
-        "optimize": optimize,
-        "vector_path": vector,
-        "nstruct": nstruct,
-        "ph": ph,
-        "name_col": name_col,
-        "seq_col": seq_col,
-        "idt_credentials_dir": Path(idt_credentials_dir) if idt_credentials_dir else None,
-        "skip_idt": skip_idt,
-        "idt_type": idt_type,
-        "idt_threshold": idt_threshold,
-        "n_tag": n_tag,
-        "c_tag": c_tag,
-        "out_cols": out_cols,
-    }
-    for key, value in cli_options.items():
-        if value is not None:
-            config_data[key] = value
+    if input_path is not None:
+        records = parse_input_file(input_path)
+    else:
+        # Optimization execution target directly transitions to the base template file
+        records = [SequenceRecord(record_id="optimized_template", protein_sequence=None)]
 
-    try:
-        config = PipelineConfig(**config_data)
-    except Exception as e:
-        logging.error(f"Configuration error: {e}")
-        raise typer.Exit(code=1)
+    results = []
 
-    if not config.params and not config.optimize:
-        logging.warning("Neither --params nor --optimize was selected. The output will just mirror the input.")
+    with concurrent.futures.ProcessPoolExecutor(
+            max_workers=config.max_workers,
+            initializer=_init_worker,
+            initargs=(config.vendor_target, config.product)
+    ) as executor:
+        future_to_record = {
+            executor.submit(_worker_task, r, template_path): r for r in records
+        }
+        for future in concurrent.futures.as_completed(future_to_record):
+            results.append(future.result())
+    print(results)
+    write_output_file(results, output_path)
 
-    logging.info("Starting pipeline...")
-    run_pipeline_with_config(config)
-
-def main():
-    app()
 
 if __name__ == "__main__":
-    main()
+    app()

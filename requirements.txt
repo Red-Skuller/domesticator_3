@@ -8,3 +8,5 @@ pydantic
 typer
 rich
 PyYAML
+
+pydantic-settings
