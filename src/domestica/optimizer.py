@@ -50,7 +50,7 @@ def _get_codon_table(template_record: SeqRecord) -> str:
         labels = feature.qualifiers.get("label", []) + feature.qualifiers.get("note", [])
         if any("!INSERT" in str(item).upper() for item in labels):
             for item in labels:
-                match = re.search(r'@EnforceTranslation\s*\(\s*genetic_table\s*=\s*["\']([^"\']+)["\']\s*\)', str(item))
+                match = re.search(r'@EnforceTranslation\s*\((?=[^)]*?\bgenetic_table\s*=\s*(?P<quote>["\']?)(?P<value>[^,"\')\s]+)(?P=quote))[^)]*\)', str(item))
                 if match:
                     table_name = match.group(1).strip().lower()
                     logger.debug("Extracted genetic table rule: '%s' from feature qualifiers.", table_name)
@@ -74,15 +74,25 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
 
     start, end = int(insert_feature.location.start), int(insert_feature.location.end)
     old_length, new_length = end - start, len(insert_dna)
+    delta = new_length - old_length
     logger.debug("Modifying sequence template target interval locus boundaries: [%d, %d] (Original Len: %d, Insert Len: %d)", start, end, old_length, new_length)
 
     left_flank = template_record[:start]
     right_flank = template_record[end:]
     insert_record = SeqRecord(Seq(insert_dna), id="target_insert", annotations={"molecule_type": "DNA"})
 
+    def fully_inside(f_start, f_end):
+        return f_start >= start and f_end <= end
+
+    def fully_left(f_end):
+        return f_end <= start
+
+    def fully_right(f_start):
+        return f_start >= end
+
     for feature in template_record.features:
         f_start, f_end = int(feature.location.start), int(feature.location.end)
-        if f_start >= start and f_end <= end:
+        if fully_inside(f_start, f_end):
             rel_start, rel_end = f_start - start, f_end - start
             new_start = 0 if (rel_start == 0 and rel_end == old_length) else rel_start
             new_end = new_length if (rel_start == 0 and rel_end == old_length) else min(rel_end, new_length)
@@ -94,6 +104,33 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
 
     merged_record = left_flank + insert_record + right_flank
     merged_record.annotations["topology"] = template_record.annotations.get("topology", "linear")
+
+    # Re-attach features that straddle the INSERT window boundary, which are
+    # otherwise dropped: Biopython's slicing only keeps features fully inside
+    # a slice, and the loop above only keeps features fully inside the window.
+    left_len = len(left_flank)
+
+    def map_pos(p):
+        if p <= start:
+            return p
+        if p >= end:
+            return p + delta
+        return left_len + (p - start)
+
+    for feature in template_record.features:
+        f_start, f_end = int(feature.location.start), int(feature.location.end)
+        if fully_inside(f_start, f_end) or fully_left(f_end) or fully_right(f_start):
+            continue  # already handled above, via left_flank, or via right_flank
+
+        new_start, new_end = map_pos(f_start), map_pos(f_end)
+        logger.debug("Re-attaching boundary-spanning feature %s: [%d, %d] -> [%d, %d]",
+                     feature.type, f_start, f_end, new_start, new_end)
+        merged_record.features.append(SeqFeature(
+            FeatureLocation(new_start, new_end, strand=feature.location.strand),
+            type=feature.type, qualifiers=feature.qualifiers
+        ))
+    with open("/home/lukah/Downloads/test_out_2.gb", "w") as f:
+        SeqIO.write(merged_record, f, "genbank")
     return merged_record
 
 
