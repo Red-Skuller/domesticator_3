@@ -46,17 +46,42 @@ class MinimizeNumKmers(Specification):
 
 
 def _get_codon_table(template_record: SeqRecord) -> str:
+    # 1. Identify all features containing the target INSERT annotation
+    insert_features = []
     for feature in template_record.features:
-        labels = feature.qualifiers.get("label", []) + feature.qualifiers.get("note", [])
+        labels = (
+            feature.qualifiers.get("label", [])
+            + feature.qualifiers.get("note", [])
+            + feature.qualifiers.get("locus_tag", [])
+        )
         if any("!INSERT" in str(item).upper() for item in labels):
-            for item in labels:
-                match = re.search(r'@EnforceTranslation\s*\((?=[^)]*?\bgenetic_table\s*=\s*(?P<quote>["\']?)(?P<value>[^,"\')\s]+)(?P=quote))[^)]*\)', str(item))
-                if match:
-                    table_name = match.group(1).strip().lower()
-                    logger.debug("Extracted genetic table rule: '%s' from feature qualifiers.", table_name)
-                    return table_name
-            break
-    logger.debug("No custom genetic table definition discovered. Defaulting to 'Standard'.")
+            insert_features.append(feature)
+
+    if not insert_features:
+        logger.debug("No INSERT annotation discovered. Defaulting to 'Standard'.")
+        return "Standard"
+
+    # 2. Define regex to capture the 'genetic_table' parameter value
+    regex = r'@EnforceTranslation\s*\((?=[^)]*?\bgenetic_table\s*=\s*(?P<quote>["\']?)(?P<value>[^,"\')\s]+)(?P=quote))[^)]*\)'
+
+    # 3. Scan for features containing @EnforceTranslation that overlap with the INSERT features
+    for insert_feat in insert_features:
+        for feature in template_record.features:
+            # Check for physical sequence overlap: max(start1, start2) < min(end1, end2)
+            if max(feature.location.start, insert_feat.location.start) < min(feature.location.end, insert_feat.location.end):
+                labels = (
+                    feature.qualifiers.get("label", [])
+                    + feature.qualifiers.get("note", [])
+                    + feature.qualifiers.get("locus_tag", [])
+                )
+                for item in labels:
+                    match = re.search(regex, str(item))
+                    if match:
+                        table_name = match.group("value").strip().lower()
+                        logger.debug("Extracted genetic table rule: '%s' from overlapping feature qualifiers.", table_name)
+                        return table_name
+
+    logger.debug("No custom genetic table definition discovered in overlapping intervals. Defaulting to 'Standard'.")
     return "Standard"
 
 
@@ -129,8 +154,6 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
             FeatureLocation(new_start, new_end, strand=feature.location.strand),
             type=feature.type, qualifiers=feature.qualifiers
         ))
-    with open("/home/lukah/Downloads/test_out_2.gb", "w") as f:
-        SeqIO.write(merged_record, f, "genbank")
     return merged_record
 
 
@@ -168,8 +191,8 @@ def optimize_sequence(
             logger.debug("Evaluating heuristic local constraint resolution criteria...")
             problem.resolve_constraints()
             logger.debug("Executing core dnachisel local optimization operations...")
-            #problem.optimize()
-            problem.optimize_with_report(target="/home/lukah/Downloads/report.zip")
+            problem.optimize()
+            #problem.optimize_with_report(target="/home/lukah/Downloads/report.zip")
             logger.debug("Executing final structural global constraint consistency verification checks...")
             problem.resolve_constraints(final_check=True)
             logger.debug("Optimization problem constraints converged successfully on attempt loop %d.", trial + 1)
@@ -179,9 +202,9 @@ def optimize_sequence(
             current_max_iters += 1000
             trial += 1
             if trial >= max_tries:
-                logger.error("Critical convergence breakdown: Complete search space exhausted without locating acceptable structural solutions.")
-                raise dc.NoSolutionError("Failed to converge on a valid optimization solution.") from nse
-
+                logger.error(
+                    "Critical convergence breakdown: Complete search space exhausted without locating acceptable structural solutions.")
+                raise RuntimeError("Failed to converge on a valid optimization solution.") from nse
     if protein_sequence and protein_sequence.strip():
         insert_start, insert_end = 0, 0
         for feature in problem.record.features:
