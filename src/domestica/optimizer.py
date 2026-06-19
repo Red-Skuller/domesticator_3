@@ -198,25 +198,20 @@ def optimize_sequence(
                 logger.error(
                     "Critical convergence breakdown: Complete search space exhausted without locating acceptable structural solutions.")
                 raise RuntimeError("Failed to converge on a valid optimization solution.") from nse
-    if protein_sequence and protein_sequence.strip():
-        insert_start, insert_end = 0, 0
-        for feature in problem.record.features:
-            labels = feature.qualifiers.get("label", []) + feature.qualifiers.get("note", [])
-            if any("INSERT" in label.upper() for label in labels):
-                insert_start, insert_end = int(feature.location.start), int(feature.location.end)
-                break
-        optimized_output_dna = problem.sequence[insert_start:insert_end]
-    else:
-        optimized_output_dna = problem.sequence
+    # Transfer the optimized sequence back to the original merged_record
+    merged_record.seq = Seq(problem.sequence)
+
+    # Determine the output string (the full optimized sequence)
+    optimized_output_dna = str(merged_record.seq)
 
     is_accepted, final_score = True, None
     if evaluator:
         logger.info("Invoking vendor API sequence optimization score validation checks.")
         try:
             is_accepted, final_score = evaluator(problem.sequence)
-            logger.info("Vendor evaluation assessment processing completed. Acceptance Status: %s, Assigned Metrics: %s", is_accepted, final_score)
         except Exception:
-            logger.exception("Critical communication or validation exception thrown during external vendor complexity evaluation processing.")
+            logger.exception("Critical communication or validation exception.")
             raise
 
-    return naive_dna, optimized_output_dna, is_accepted, final_score, problem.record
+    # Return the updated merged_record containing all original annotations
+    return naive_dna, optimized_output_dna, is_accepted, final_score, merged_record
