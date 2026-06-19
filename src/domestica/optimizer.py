@@ -104,35 +104,15 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
 
     left_flank = template_record[:start]
     right_flank = template_record[end:]
+
+    # Explicitly clear features to prevent Biopython boundary-slicing omission bugs
+    left_flank.features = []
+    right_flank.features = []
+
     insert_record = SeqRecord(Seq(insert_dna), id="target_insert", annotations={"molecule_type": "DNA"})
-
-    def fully_inside(f_start, f_end):
-        return f_start >= start and f_end <= end
-
-    def fully_left(f_end):
-        return f_end <= start
-
-    def fully_right(f_start):
-        return f_start >= end
-
-    for feature in template_record.features:
-        f_start, f_end = int(feature.location.start), int(feature.location.end)
-        if fully_inside(f_start, f_end):
-            rel_start, rel_end = f_start - start, f_end - start
-            new_start = 0 if (rel_start == 0 and rel_end == old_length) else rel_start
-            new_end = new_length if (rel_start == 0 and rel_end == old_length) else min(rel_end, new_length)
-
-            insert_record.features.append(SeqFeature(
-                FeatureLocation(new_start, new_end, strand=feature.location.strand),
-                type=feature.type, qualifiers=feature.qualifiers
-            ))
-
     merged_record = left_flank + insert_record + right_flank
     merged_record.annotations["topology"] = template_record.annotations.get("topology", "linear")
 
-    # Re-attach features that straddle the INSERT window boundary, which are
-    # otherwise dropped: Biopython's slicing only keeps features fully inside
-    # a slice, and the loop above only keeps features fully inside the window.
     left_len = len(left_flank)
 
     def map_pos(p):
@@ -142,18 +122,29 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
             return p + delta
         return left_len + (p - start)
 
+    # Re-attach all features manually using exact relative coordinates
     for feature in template_record.features:
         f_start, f_end = int(feature.location.start), int(feature.location.end)
-        if fully_inside(f_start, f_end) or fully_left(f_end) or fully_right(f_start):
-            continue  # already handled above, via left_flank, or via right_flank
 
-        new_start, new_end = map_pos(f_start), map_pos(f_end)
-        logger.debug("Re-attaching boundary-spanning feature %s: [%d, %d] -> [%d, %d]",
-                     feature.type, f_start, f_end, new_start, new_end)
+        if f_start >= start and f_end <= end:
+            # Feature is fully contained within the replaced insert region
+            rel_start, rel_end = f_start - start, f_end - start
+            if rel_start == 0 and rel_end == old_length:
+                new_start = left_len
+                new_end = left_len + new_length
+            else:
+                new_start = left_len + rel_start
+                new_end = left_len + min(rel_end, new_length)
+        else:
+            # Feature spans boundaries, is fully left, or fully right
+            new_start = map_pos(f_start)
+            new_end = map_pos(f_end)
+
         merged_record.features.append(SeqFeature(
             FeatureLocation(new_start, new_end, strand=feature.location.strand),
             type=feature.type, qualifiers=feature.qualifiers
         ))
+
     return merged_record
 
 
@@ -187,12 +178,14 @@ def optimize_sequence(
     while trial < max_tries:
         logger.debug("Beginning sequence optimization cycle loop attempt %d/%d (Iteration Limit: %d)", trial + 1, max_tries, current_max_iters)
         try:
+            #SeqIO.write(merged_record,"/home/lukah/Downloads/record2.gb","gb")
+            logger.debug(f"Merged Record Annotations before optimization: {merged_record.features}")
             problem = dc.DnaOptimizationProblem.from_record(merged_record, specifications_dict=custom_specs)
             logger.debug("Evaluating heuristic local constraint resolution criteria...")
             problem.resolve_constraints()
             logger.debug("Executing core dnachisel local optimization operations...")
             problem.optimize()
-            #problem.optimize_with_report(target="/home/lukah/Downloads/report.zip")
+            #problem.optimize_with_report(target="/home/lukah/Downloads/report_2605194.zip")
             logger.debug("Executing final structural global constraint consistency verification checks...")
             problem.resolve_constraints(final_check=True)
             logger.debug("Optimization problem constraints converged successfully on attempt loop %d.", trial + 1)
