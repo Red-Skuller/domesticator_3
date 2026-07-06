@@ -53,7 +53,7 @@ def write_output_file(results: List[ResultRow], destination: Path) -> None:
     logger.info("Writing output data to destination path: %s", destination)
 
     if ext in (".gb", ".genbank"):
-        logger.debug("Formatting output as GenBank sequence data records.")
+        logger.debug("Formatting output as individual GenBank sequence data records.")
         records_to_write = []
         for row in results:
             if row.status == "SUCCESS" and row.optimized_record is not None:
@@ -63,12 +63,14 @@ def write_output_file(results: List[ResultRow], destination: Path) -> None:
                 records_to_write.append(rec)
 
         if records_to_write:
-            with open(destination, "w") as f:
-                SeqIO.write(records_to_write, f, "genbank")
-            logger.info("Successfully recorded %d sequence structures to GenBank file.", len(records_to_write))
+            for rec in records_to_write:
+                safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', rec.id)
+                out_path = destination.with_name(f"{destination.stem}_{safe_id}{destination.suffix}")
+                with open(out_path, "w") as f:
+                    SeqIO.write(rec, f, "genbank")
+            logger.info("Successfully recorded %d sequence structures to GenBank files.", len(records_to_write))
         else:
             logger.warning("No successful optimized records available to serialize to GenBank format.")
-
     elif ext in (".xlsx", ".xls"):
         logger.debug("Formatting output matrix as Excel file dataframe tables.")
         df = pd.DataFrame([row.model_dump() for row in results])
