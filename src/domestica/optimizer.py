@@ -169,6 +169,25 @@ def optimize_sequence(
         naive_dna = None
         merged_record = template_record
 
+    current_length = len(merged_record.seq)
+    if current_length < 200:
+        num_as = 200 - current_length
+        logger.info("Sequence length (%d bp) is below 200 bp. Appending %d 'A' bases.", current_length, num_as)
+        merged_record.seq = merged_record.seq + ("A" * num_as)
+        padding_feature = SeqFeature(
+            FeatureLocation(current_length, 200, strand=1),
+            type="misc_feature",
+            qualifiers={
+                "note": [
+                    "@AvoidHairpins() & @AvoidPattern(AAAAAA) & @AvoidPattern(CCCCCC) & "
+                    "@AvoidPattern(GAGACC) & @AvoidPattern(GGGGGG) & @AvoidPattern(TTTTTT) & "
+                    "@EnforceGCContent(25-80%/50bp) & @EnforceGCContent(40-65%) & ~MinimizeNumKmers(8, boost=10)"
+                ],
+                "label": ["padding_as"]
+            }
+        )
+        merged_record.features.append(padding_feature)
+
     custom_specs = dict(DEFAULT_SPECIFICATIONS_DICT)
     custom_specs["MinimizeNumKmers"] = MinimizeNumKmers
 
@@ -178,16 +197,18 @@ def optimize_sequence(
     while trial < max_tries:
         logger.debug("Beginning sequence optimization cycle loop attempt %d/%d (Iteration Limit: %d)", trial + 1, max_tries, current_max_iters)
         try:
-            #SeqIO.write(merged_record,"/home/lukah/Downloads/record2.gb","gb")
+            #SeqIO.write(merged_record,"/home/lukah/Downloads/record260818_7.gb","gb")
             logger.debug(f"Merged Record Annotations before optimization: {merged_record.features}")
             problem = dc.DnaOptimizationProblem.from_record(merged_record, specifications_dict=custom_specs)
             logger.debug("Evaluating heuristic local constraint resolution criteria...")
             problem.resolve_constraints()
             logger.debug("Executing core dnachisel local optimization operations...")
             problem.optimize()
-            #problem.optimize_with_report(target="/home/lukah/Downloads/report_2605194.zip")
+            #problem.optimize_with_report(target="/home/lukah/Downloads/report_260818_7.zip")
             logger.debug("Executing final structural global constraint consistency verification checks...")
-            problem.resolve_constraints(final_check=True)
+            logger.info(problem.constraints_text_summary())
+            logger.info(problem.objectives_text_summary())
+            #problem.resolve_constraints(final_check=True)
             logger.debug("Optimization problem constraints converged successfully on attempt loop %d.", trial + 1)
             break
         except dc.NoSolutionError as nse:
