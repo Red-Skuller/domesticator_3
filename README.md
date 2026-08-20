@@ -1,89 +1,93 @@
-# domesticator_3
+# Domestica
 
-## Intro
+Domestica is a Python command-line tool. It automates DNA sequence optimization. The software reads protein sequences, reverse-translates them into DNA, and inserts them into a GenBank vector template. It applies constraints to optimize the sequence and can send the sequence to vendor APIs to check synthesis complexity.
 
-A reverse translation tool written by [Ryan Kibler](rdkibler@gmail.com?subject=Domesticator3) (rdkibler). It uses the powerful codon optimization library [dnachisel](https://github.com/Edinburgh-Genome-Foundry/DnaChisel/tree/master) with several custom objectives and constraints. It is meant to fully automate the gene ordering process short of actually submitting the order to your DNA synthesis company of choice as well as compile some useful information about the translated genes. However, Ryan does not take any responsibility for unintended consequences of using domesticator3 – that is entirely the user's responsibility. **Always double check your orders!** Domesticator3 is currently a work in progress. Follow its development on [github](https://github.com/rdkibler/domesticator_3).
+## Features
 
+*   **Reverse Translation**: Converts protein sequences to DNA using specified codon tables.
+*   **Template Integration**: Replaces a target region in a GenBank template with the new DNA sequence.
+*   **Sequence Optimization**: Uses `dnachisel` to resolve constraints (e.g., GC content, hairpins) and minimize k-mers.
+*   **Sequence Padding**: Adds padding bases (A) to sequences that are shorter than a specified minimum length.
+*   **Vendor Validation**: Connects to IDT or ThermoFisher APIs to check if the sequence is acceptable for synthesis.
+*   **Parallel Processing**: Processes multiple sequences concurrently.
 
-### Basic Usage 
+## Installation
 
-The tool currently lives under ''/home/rdkibler/projects/dom_dev/domesticator3/domesticator3''. It supports both fasta files and pdb files as inputs and requires a backbone vector files in genbank format to control the behavior of the optimizer. See [[:protocols:dry_lab:genes:codon_optimization:domesticator3#vector_files|vector files]] for details.
-
-Here is a basic example:
+Domestica requires Python. Install the package and its dependencies:
 
 ```bash
-/software/domestica.py/domestica.py my_design.pdb /software/domestica.py/vectors/standard/pET29b.gb
+pip install -r requirements.txt
 ```
 
-Domesticator is non-deterministic, so by default it will optimize each sequence multiple times and pick the best one to output. The number of optimizations to try is controlled by the ''–nstruct'' flag
+*(Note: Ensure you have `typer`, `dnachisel`, `biopython`, `pandas`, `openpyxl`and `httpx` installed).*
 
-### IDT gBlockComplexityAnalysis 
+## Configuration
 
-This script can use IDT's gBlockComplexityAnalysis API to check the synthesizability of a fragment. This isn't the same calculator used to compute synthesizability of pre-cloned genes, but it's similar. This is used to select the best sequence to output based on synthesizability. You can turn this off with the ''–no_idt'' flag The first time you use the script, it will request that you apply for the [IDT API program](https://www.idtdna.com/pages/tools/apidoc) and enter the details. The details are stored in a file readable only to you under ''~/.domesticator/info.json''. As long as the ''info.json'' file is intact, you will never need to do this again.
+Configure the tool with environment variables. You can write these variables in a `.env` file in your working directory.
 
-### Protein Sequences 
+| Variable Name | Description | Required |
+| :--- | :--- | :--- |
+| `DOMESTICA_VENDOR_TARGET` | Vendor to use for evaluation (`idt` or `thermofisher`). | No |
+| `DOMESTICA_PRODUCT` | Synthesis product type (e.g., `eblocks`, `genes`). | No |
+| `DOMESTICA_MAX_WORKERS` | Maximum number of parallel processes (1-64). | No |
+| `DOMESTICA_MIN_LENGTH` | Minimum base pair length for the final sequence. | No |
+| `DOMESTICA_IDT_CLIENT_ID` | IDT API Client ID. | Yes (if vendor=idt) |
+| `DOMESTICA_IDT_CLIENT_SECRET` | IDT API Client Secret. | Yes (if vendor=idt) |
+| `DOMESTICA_IDT_USERNAME` | IDT Account Username. | Yes (if vendor=idt) |
+| `DOMESTICA_IDT_PASSWORD` | IDT Account Password. | Yes (if vendor=idt) |
+| `DOMESTICA_THERMOFISHER_CLIENT_ID` | ThermoFisher API Client ID. | Yes (if vendor=thermofisher) |
+| `DOMESTICA_THERMOFISHER_CLIENT_SECRET`| ThermoFisher API Client Secret. | Yes (if vendor=thermofisher) |
 
-Domesticator currently supports multichain PDBs and FASTA files as the input types. For multichain PDBs, each chain is separately extracted and inserted into a new copy of the base vector. If the base vector supports multiple chains (either via multiple CDSs or a multi-cistronic setup), then the chains will be inserted into the same vector at the appropriate positions.
+## Usage
 
-Each sequence in a FASTA file will be inserted into a new copy of the base vector. Domesticator3 currently does not support inserting multiple sequences into the same vector file if those sequences came from a FASTA file.
+Use the `optimize` command to run the pipeline.
 
-**WARNING FOR HOMO-N-MER DESIGNERS**: Domesticator does not detect duplicate sequences, so if you give it a PDB containing the symmetric structure instead of the ASU, it will insert each chain into the base vector individually and you may end up ordering N copies of your design instead of one.
+```bash
+python -m domestica optimize [INPUT_PATH] [OUTPUT_PATH] --template [TEMPLATE_PATH] [OPTIONS]
+```
 
+### Arguments and Options
 
-### Vector Files 
+*   `INPUT_PATH`: Path to the input file. If you do not provide this, the tool optimizes the empty template.
+*   `OUTPUT_PATH`: Path to save the output file(s).
+*   `-t, --template`: **(Required)** Path to the `.gb` or `.genbank` template file.
+*   `-v, --vendor`: Set the vendor for complexity evaluation (`idt` or `thermofisher`).
+*   `-p, --product`: Set the product type (Default: `eblocks`).
+*   `-w, --workers`: Set the number of parallel workers.
+*   `-m, --min-length`: Set the minimum sequence length in base pairs (Default: `300`).
+*   `--verbose`: Enable debug logging.
 
-Genbank vector files handle almost all customization of the codon optimization via feature parsing by dnachisel's [Genbank API](https://edinburgh-genome-foundry.github.io/DnaChisel/genbank/genbank_api.html).
+### Examples
 
-The position at which an input sequences gets inserted is a feature with type "misc_feature" and label having the form `!insert(<chain_letter>)` where <chain_letter> is a string corresponding to the PDB chain ID of the chain you wish to insert. For example, to insert chain A of a PDB file, use `insert(A)` The chain ID of sequences from FASTA files is assumed to be "A".
+Optimize sequences from a FASTA file and write GenBank outputs:
 
-The minimum set of other specifications one should include are listed here:
-  * @AvoidHairpins()
-  * @AvoidPattern(AAAAAA)
-  * @AvoidPattern(CCCCCC)
-  * @AvoidPattern(GGGGGG)
-  * @AvoidPattern(TTTTTT)
-  * @EnforceGCContent(25-80%/50bp)
-  * @EnforceGCContent(40-65%)
-  * ~MinimizeNumKmers(8, boost=10)
-  * ~use_best_codon(e_coli)
-  * @EnforceTranslation() Over the coding sequence
-  * @AvoidChanges() everywhere except the the insertion site
+```bash
+python -m domestica optimize input.fasta output.gb -t vector_template.gb -v idt -p eblocks --verbose
+```
 
-A collection of vector files formatted for controlling domesticator3 are available for use at domesticator3/vectors. These include all the common vectors available under IDT, the Duet-1 vectors available from genscript, and the Lucy vectors available from genscript.
+Optimize sequences from an Excel file and output a CSV report:
 
-Features with the type "protein" between an annotated "start" feature with type "domesticator" and an in-frame stop codon will be used for naming proteins.
+```bash
+python -m domestica optimize sequences.xlsx report.csv -t vector_template.gb -w 4
+```
 
-## Outputs
+## File Formats
 
-### Orderable Sequences 
-Sequences under a feature of type "domesticator" and label "synthesize" will be extracted and saved as a FASTA file named ''order.dna.fasta'' which should be ready to order after user review. Ordering these gene fragments pre-cloned into the vector should result in the ordered plasmid having a seqeunce identical to the output vector genbank file of the corresponding design, assuming the input vector file is accurate.
+### Inputs
+Domestica accepts these input file types:
+*   **FASTA** (`.fasta`, `.fa`): Extracts record IDs and protein sequences.
+*   **Excel** (`.xlsx`, `.xls`): Reads the first column as the record ID and the second column as the protein sequence.
 
-### Output Vector
+### Outputs
+Domestica writes to these output file types:
+*   **GenBank** (`.gb`, `.genbank`): Writes one GenBank file for each successful sequence. The file name includes the record ID.
+*   **Excel/CSV** (`.xlsx`, `.xls`, `.csv`): Writes a flat table containing optimization status, scores, and sequences.
 
-Domesticator outputs the complete vector file including your inserts for your record keeping purposes. This file retains the constraints and objectives used to optimize the sequence as features. It also names the inserted fragment after the name of the seqeunce from the input PDB or FASTA file. This file is named according to the name of the sequence and the vector file. Each complete optimized vector will output one vector genbank file.
+## Template Preparation
 
-### Protein Parameters
+The input GenBank template must obey two structural rules:
 
-Domesticator3 automatically detects your translated protein in full, including tags encoded on the vector and not on the DNA fragment to be synthesized. These proteins are named according to "protein" type features along the sequence, and protparam values are automatically generated and saved to the file ''translated_proteins.params''.
-
-## Bugs and Feature Requests
-
-Please request access to the [github repo](https://github.com/rdkibler/domesticator_3) and use the Issues feature to report bugs and request new features. This is preferred to email Ryan in case someone else takes up maintance of the script.
-
-
-## FAQs 
-Q:  A couple of questions about the vector input file.   In my case, I am codon optimizing sequences for expression in h_sapiens jurkat cells.  Is the only thing that I need to change the annotation  ~use_best_codon(e_coli)?  to ~use_best_codon(h_sapiens)?
-
-A:  Essentially yes. There are a few extra eukaryote-specific things that probably should be added for your case like avoiding splicing sites and eukaryotic alternative start sites and things like that, but all that is just liberal use of @AvoidPattern(NNN) that should be pretty straightforward to figure out if you know the patterns to avoid if you want to avoid. 
-
-Q:  Also, why is there overlap between the annotations included in the ORF region (i.e. @EnforceTranslation()) and the vector regions (i.e. @AvoidChanges()) in the example vector file pET29b+?  
-
-A:  It doesn't matter a whole lot. Since nothing can change in the AvoidChanges regions, translation will always be enforced anyway where it overlaps with EnforceTranslation. But I like to add it because it helps show what is going to be translated by the cell. 
-
-Q:  What should the annotations of my input vector file look like?
-
-A: ![vector screenshot](vector_screenshot.png) 
-
-
-
-
+1.  **Target Region**: The template must contain at least one feature with the text `!INSERT` or `INSERT` in its `label`, `note`, or `locus_tag`. Domestica replaces this region with the reverse-translated DNA.
+2.  **Codon Table (Optional)**: To enforce a specific genetic translation table, add an `@EnforceTranslation` tag to a feature that overlaps the `INSERT` region.
+    *   Format: `@EnforceTranslation(genetic_table="TableName")`
+    *   If you do not specify a table, Domestica uses `Standard`.
