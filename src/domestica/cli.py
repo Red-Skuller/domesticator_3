@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+
 from domestica.schema import PipelineConfig, SequenceRecord, ResultRow
 from domestica.io import parse_input_file, write_output_file
 from domestica.optimizer import optimize_sequence
@@ -108,6 +109,17 @@ def optimize(
     write_output_file(results, output_path)
     logger.info("Optimization process pipeline complete.")
 
+    logger.info("Optimization Summary:")
+    header = f"{'Record ID':<25} | {'Status':<10} | {'Vendor Accepted':<15} | {'Vendor Score':<15} | {'Length':<10}"
+    logger.info(header)
+    logger.info("-" * len(header))
+
+    for res in results:
+        seq_len = str(len(res.optimized_sequence)) if res.optimized_sequence else "N/A"
+        score = f"{res.vendor_score:.2f}" if res.vendor_score is not None else "N/A"
+
+        row_str = f"{str(res.record_id):<25} | {str(res.status):<10} | {str(res.accepted):<15} | {score:<15} | {seq_len:<10}"
+        logger.info(row_str)
 
 if __name__ == "__main__":
     app()
