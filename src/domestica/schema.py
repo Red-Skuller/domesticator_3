@@ -25,6 +25,7 @@ class PipelineConfig(BaseSettings):
     vendor_target: Optional[str] = None
     product: str = "eblocks"
     max_workers: int = Field(default=2, ge=1, le=64)
+    min_length: int = Field(default=300, ge=0)
 
     model_config = SettingsConfigDict(
         env_prefix="DOMESTICA_",

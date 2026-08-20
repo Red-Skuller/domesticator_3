@@ -60,8 +60,7 @@ class ThermoFisherEvaluator(ComplexityEvaluator):
         payload = {"acgtSequence": cleaned_sequence, "product": self.api_product_value}
 
         while True:
-            logger.debug("Dispatching post sequence validation request payload to ThermoFisher diagnostics API.")
-            logger.debug("ThermoFisher Request Payload: %s", payload)
+            logger.debug("Dispatching validation request to ThermoFisher API. Sequence length: %d bp", len(cleaned_sequence))
             try:
                 response = self.http_client.post(
                     url,
@@ -71,19 +70,19 @@ class ThermoFisherEvaluator(ComplexityEvaluator):
                 )
 
                 if response.status_code == 401:
-                    logger.warning("ThermoFisher API token invalidated (401 Unauthorized). Forcing token refresh routine sequence.")
+                    logger.warning("ThermoFisher API token invalidated (401). Forcing token refresh.")
                     self._get_token(force_refresh=True)
                     continue
                 if response.status_code == 429:
-                    logger.warning("ThermoFisher rate limit ceiling reached (429 Too Many Requests). Dormant cooling backoff for 10 seconds.")
+                    logger.warning("ThermoFisher rate limit reached (429). Dormant cooling backoff for 10 seconds.")
                     time.sleep(10)
                     continue
 
-                logger.debug("ThermoFisher Response Status: %d, Body: %s", response.status_code, response.text)
+                logger.debug("ThermoFisher Response Status: %d", response.status_code)
                 response.raise_for_status()
                 complexity = response.json().get("content", {}).get("complexity", "red").lower()
-                logger.debug("ThermoFisher evaluation structural assessment classification score returned: '%s'", complexity)
+                logger.debug("ThermoFisher classification score returned: '%s'", complexity)
                 return complexity != "red", None
             except Exception:
-                logger.exception("Fatal processing breakdown when executing ThermoFisher API sequence screening requests.")
+                logger.exception("Fatal processing breakdown executing ThermoFisher API requests.")
                 raise

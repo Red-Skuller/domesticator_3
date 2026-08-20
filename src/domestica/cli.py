@@ -31,7 +31,7 @@ def _init_worker(vendor_target: Optional[str], product: str, verbose: bool) -> N
         _worker_evaluator = None
 
 
-def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
+def _worker_task(record: SequenceRecord, template_path: Path, min_length: int) -> ResultRow:
     global _worker_evaluator
     logger.info("Starting processing for record ID: %s", record.record_id)
     try:
@@ -40,6 +40,7 @@ def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
         naive, opt_seq, accepted, score, opt_rec = optimize_sequence(
             protein_sequence=record.protein_sequence,
             template_path=template_path,
+            min_length=min_length,
             evaluator=evaluator_func
         )
         logger.info("Successfully optimized record ID: %s. Accepted: %s, Score: %s", record.record_id, accepted, score)
@@ -58,14 +59,13 @@ def _worker_task(record: SequenceRecord, template_path: Path) -> ResultRow:
 
 @app.command()
 def optimize(
-        input_path: Optional[Path] = typer.Argument(None,
-                                                    help="Path to inputs. If omitted, the template itself is optimized.",
-                                                    exists=True),
+        input_path: Optional[Path] = typer.Argument(None, help="Path to inputs.", exists=True),
         output_path: Path = typer.Argument(..., help="Path for outputs."),
         template_path: Path = typer.Option(..., "--template", "-t", exists=True),
         vendor: Optional[str] = typer.Option(None, "--vendor", "-v"),
         product: str = typer.Option("eblocks", "--product", "-p"),
         max_workers: int = typer.Option(max(1, (os.cpu_count() or 2) - 1), "--workers", "-w"),
+        min_length: int = typer.Option(300, "--min-length", "-m", help="Minimum sequence length in base pairs."),
         verbose: bool = typer.Option(False, "--verbose")
 ) -> None:
     logging.basicConfig(
@@ -75,7 +75,7 @@ def optimize(
     )
 
     logger.info("Initializing optimization pipeline workflow.")
-    config = PipelineConfig(vendor_target=vendor, product=product, max_workers=max_workers)
+    config = PipelineConfig(vendor_target=vendor, product=product, max_workers=max_workers, min_length=min_length)
     logger.debug("Pipeline Configuration: %s", config.model_dump())
 
     if input_path is not None:
@@ -94,7 +94,7 @@ def optimize(
             initargs=(config.vendor_target, config.product, verbose)
     ) as executor:
         future_to_record = {
-            executor.submit(_worker_task, r, template_path): r for r in records
+            executor.submit(_worker_task, r, template_path, config.min_length): r for r in records
         }
         for future in concurrent.futures.as_completed(future_to_record):
             rec = future_to_record[future]

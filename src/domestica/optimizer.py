@@ -10,40 +10,9 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
+from domestica.specs.base import get_all_specifications
 
 logger = logging.getLogger(__name__)
-
-
-class MinimizeNumKmers(Specification):
-    """Minimize a no-kmers score."""
-    best_possible_score = 0
-
-    def __init__(self, k=9, location=None, boost=1.0):
-        self.location = location
-        self.k = k
-        self.boost = boost
-
-    def initialize_on_problem(self, problem, role=None):
-        return self._copy_with_full_span_if_no_location(problem)
-
-    def evaluate(self, problem):
-        sequence = self.location.extract_sequence(problem.sequence)
-        all_kmers = [sequence[i: i + self.k] for i in range(len(sequence) - self.k)]
-        number_of_non_unique_kmers = sum(
-            count for kmer, count in Counter(all_kmers).items() if count > 1
-        )
-        score = -(float(self.k) * number_of_non_unique_kmers) / len(sequence)
-        return SpecEvaluation(
-            self, problem, score=score, locations=[self.location],
-            message=f"Score: {score:.2f} ({number_of_non_unique_kmers} non-unique {self.k}-mers)"
-        )
-
-    def label_parameters(self): return [("k", str(self.k))]
-
-    def short_label(self): return f"Avoid {self.k}mers {self.boost}"
-
-    def __str__(self): return "MinimizeNum%dmers" % self.k
-
 
 def _get_codon_table(template_record: SeqRecord) -> str:
     # 1. Identify all features containing the target INSERT annotation
@@ -151,6 +120,7 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
 def optimize_sequence(
         protein_sequence: Optional[str],
         template_path: Path,
+        min_length: int = 300,
         evaluator: Optional[Callable[[str], Tuple[bool, Optional[float]]]] = None
 ) -> Tuple[Optional[str], str, bool, Optional[float], Optional[SeqRecord]]:
     logger.debug("Loading single record vector structural profile from path: %s", template_path)
@@ -170,12 +140,12 @@ def optimize_sequence(
         merged_record = template_record
 
     current_length = len(merged_record.seq)
-    if current_length < 200:
-        num_as = 200 - current_length
-        logger.info("Sequence length (%d bp) is below 200 bp. Appending %d 'A' bases.", current_length, num_as)
+    if current_length < min_length:
+        num_as = min_length - current_length
+        logger.info("Sequence length (%d bp) is below %d bp. Appending %d 'A' bases.", current_length, min_length, num_as)
         merged_record.seq = merged_record.seq + ("A" * num_as)
         padding_feature = SeqFeature(
-            FeatureLocation(current_length, 200, strand=1),
+            FeatureLocation(current_length, min_length, strand=1),
             type="misc_feature",
             qualifiers={
                 "note": [
@@ -189,7 +159,7 @@ def optimize_sequence(
         merged_record.features.append(padding_feature)
 
     custom_specs = dict(DEFAULT_SPECIFICATIONS_DICT)
-    custom_specs["MinimizeNumKmers"] = MinimizeNumKmers
+    custom_specs.update(get_all_specifications())
 
     trial, max_tries, current_max_iters = 0, 10, 1000
     problem = None
@@ -197,32 +167,26 @@ def optimize_sequence(
     while trial < max_tries:
         logger.debug("Beginning sequence optimization cycle loop attempt %d/%d (Iteration Limit: %d)", trial + 1, max_tries, current_max_iters)
         try:
-            #SeqIO.write(merged_record,"/home/lukah/Downloads/record260818_7.gb","gb")
-            logger.debug(f"Merged Record Annotations before optimization: {merged_record.features}")
             problem = dc.DnaOptimizationProblem.from_record(merged_record, specifications_dict=custom_specs)
             logger.debug("Evaluating heuristic local constraint resolution criteria...")
             problem.resolve_constraints()
             logger.debug("Executing core dnachisel local optimization operations...")
             problem.optimize()
-            #problem.optimize_with_report(target="/home/lukah/Downloads/report_260818_7.zip")
+            # REMOVED hardcoded debug paths here
             logger.debug("Executing final structural global constraint consistency verification checks...")
             logger.info(problem.constraints_text_summary())
             logger.info(problem.objectives_text_summary())
-            #problem.resolve_constraints(final_check=True)
             logger.debug("Optimization problem constraints converged successfully on attempt loop %d.", trial + 1)
             break
         except dc.NoSolutionError as nse:
-            logger.warning("Optimization pass iteration %d failed to converge under current problem parameters: %s", trial + 1, str(nse))
+            logger.warning("Optimization pass iteration %d failed to converge: %s", trial + 1, str(nse))
             current_max_iters += 1000
             trial += 1
             if trial >= max_tries:
-                logger.error(
-                    "Critical convergence breakdown: Complete search space exhausted without locating acceptable structural solutions.")
+                logger.error("Critical convergence breakdown: Search space exhausted without locating acceptable structures.")
                 raise RuntimeError("Failed to converge on a valid optimization solution.") from nse
-    # Transfer the optimized sequence back to the original merged_record
-    merged_record.seq = Seq(problem.sequence)
 
-    # Determine the output string (the full optimized sequence)
+    merged_record.seq = Seq(problem.sequence)
     optimized_output_dna = str(merged_record.seq)
 
     is_accepted, final_score = True, None
@@ -234,5 +198,4 @@ def optimize_sequence(
             logger.exception("Critical communication or validation exception.")
             raise
 
-    # Return the updated merged_record containing all original annotations
     return naive_dna, optimized_output_dna, is_accepted, final_score, merged_record

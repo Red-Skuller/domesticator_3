@@ -69,49 +69,39 @@ class IDTEvaluator(ComplexityEvaluator):
     def evaluate(self, sequence: str) -> Tuple[bool, Optional[float]]:
         payload = [{"Name": "Target", "Sequence": sequence}]
         for attempt in range(6):
-            logger.debug("Dispatching sequence request validation block to IDT endpoint. Attempt: %d/6", attempt + 1)
-            logger.debug("IDT Request Payload: %s", payload)
+            logger.debug("Dispatching sequence request to IDT endpoint. Attempt: %d/6. Sequence length: %d bp", attempt + 1, len(sequence))
             try:
                 response = self.http_client.post(
                     self.endpoint, json=payload,
                     headers={"Authorization": f"Bearer {self._get_token()}"}
                 )
                 if response.status_code == 401:
-                    logger.warning(
-                        "IDT endpoint returned 401 Unauthorized status. Execution forcing immediate token regeneration cycles.")
+                    logger.warning("IDT endpoint returned 401 Unauthorized status. Forcing token regeneration.")
                     self._get_token(force_refresh=True)
                     continue
                 if response.status_code in (429, 500, 502, 503, 504):
                     backoff = random.uniform(0, min(60.0, 2.0 * (2 ** attempt)))
-                    logger.warning(
-                        "IDT connection encountered server/rate constraints (Status: %d). Execution delaying exponential backoff stall: %.2f seconds.",
-                        response.status_code, backoff)
+                    logger.warning("IDT server limits (Status: %d). Delaying exponential backoff: %.2f seconds.", response.status_code, backoff)
                     time.sleep(backoff)
                     continue
 
-                logger.debug("IDT Response Status: %d, Body: %s", response.status_code, response.text)
+                logger.debug("IDT Response Status: %d", response.status_code)
                 response.raise_for_status()
                 res = response.json()[0]
                 score = res.get("ComplexityScore")
 
                 if score is not None:
                     score_val = float(score)
-                    logger.debug(
-                        "IDT verification returned structural complexity calculation metric: %f (Evaluation Acceptance Threshold Criteria: <= %f)",
-                        score_val, self.threshold)
+                    logger.debug("IDT returned complexity metric: %f (Threshold: <= %f)", score_val, self.threshold)
                     return score_val <= self.threshold, score_val
 
                 is_acceptable = res.get("IsAcceptable", False)
-                logger.debug(
-                    "Complexity metrics missing from response payload. Falling back to explicit acceptance status boolean: %s",
-                    is_acceptable)
+                logger.debug("Complexity metrics missing. Falling back to explicit acceptance status: %s", is_acceptable)
                 return is_acceptable, None
             except Exception:
-                logger.exception(
-                    "Exception encountered on loop evaluation cycle step pass %d of 6 while processing screening requests to IDT.",
-                    attempt + 1)
+                logger.exception("Exception encountered on evaluation cycle step %d of 6.", attempt + 1)
                 if attempt == 5:
                     raise
 
-        logger.error("All structural request retransmissions to IDT have broken down or reached limits.")
+        logger.error("All structural request retransmissions to IDT have failed.")
         return False, None
