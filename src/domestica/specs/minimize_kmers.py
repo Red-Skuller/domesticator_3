@@ -19,7 +19,7 @@ class MinimizeNumKmers(Specification):
 
     def evaluate(self, problem):
         sequence = self.location.extract_sequence(problem.sequence)
-        all_kmers = [sequence[i : i + self.k] for i in range(len(sequence) - self.k)]
+        all_kmers = [sequence[i: i + self.k] for i in range(len(sequence) - self.k)]
         number_of_non_unique_kmers = sum(
             count for kmer, count in Counter(all_kmers).items() if count > 1
         )

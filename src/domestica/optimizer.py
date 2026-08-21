@@ -1,13 +1,10 @@
 import logging
 import re
-from collections import Counter
 from typing import Tuple, Optional, Callable
 from pathlib import Path
 
 import dnachisel as dc
 from dnachisel import (
-    Specification,
-    SpecEvaluation,
     reverse_translate,
     DEFAULT_SPECIFICATIONS_DICT,
 )
