@@ -60,15 +60,25 @@ def _worker_task(record: SequenceRecord, template_path: Path, min_length: int) -
 
 @app.command()
 def optimize(
-        input_path: Optional[Path] = typer.Argument(None, help="Path to inputs.", exists=True),
-        output_path: Path = typer.Argument(..., help="Path for outputs."),
-        template_path: Path = typer.Option(..., "--template", "-t", exists=True),
-        vendor: Optional[str] = typer.Option(None, "--vendor", "-v"),
-        product: str = typer.Option("eblocks", "--product", "-p"),
-        max_workers: int = typer.Option(max(1, (os.cpu_count() or 2) - 1), "--workers", "-w"),
+        input_path: Optional[Path] = typer.Option(None, "--input", "-i",
+                                                  help="Path to input file (FASTA or Excel). If not provided, operates on template only.",
+                                                  exists=False),
+        output_path: Path = typer.Option(..., "--output", "-o", help="Path for output file."),
+        template_path: Path = typer.Option(..., "--template", "-t", exists=True, help="Path to template GenBank file."),
+        vendor: Optional[str] = typer.Option(None, "--vendor", "-v",
+                                             help="Vendor to use for evaluation (e.g., 'idt', 'thermofisher')."),
+        product: str = typer.Option("eblocks", "--product", "-p", help="Product type for vendor evaluation."),
+        max_workers: int = typer.Option(max(1, (os.cpu_count() or 2) - 1), "--workers", "-w",
+                                        help="Number of worker processes."),
         min_length: int = typer.Option(300, "--min-length", "-m", help="Minimum sequence length in base pairs."),
-        verbose: bool = typer.Option(False, "--verbose")
+        verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging.")
 ) -> None:
+    """
+    Optimize DNA sequences for synthesis.
+
+    Takes protein sequences from an input file (FASTA or Excel) or operates directly
+    on a template, and optimizes them for DNA synthesis using various constraints.
+    """
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -76,10 +86,24 @@ def optimize(
     )
 
     logger.info("Initializing optimization pipeline workflow.")
+
+    # Validate max_workers
+    if max_workers < 1 or max_workers > 64:
+        logger.error("Invalid max_workers value: %d. Must be between 1 and 64.", max_workers)
+        raise typer.BadParameter("max_workers must be between 1 and 64")
+
+    # Validate min_length
+    if min_length < 0:
+        logger.error("Invalid min_length value: %d. Must be non-negative.", min_length)
+        raise typer.BadParameter("min_length must be non-negative")
+
     config = PipelineConfig(vendor_target=vendor, product=product, max_workers=max_workers, min_length=min_length)
     logger.debug("Pipeline Configuration: %s", config.model_dump())
 
     if input_path is not None:
+        if not input_path.exists():
+            logger.error("Input file does not exist: %s", input_path)
+            raise typer.BadParameter(f"Input file does not exist: {input_path}")
         logger.debug("Input path provided: %s", input_path)
         records = parse_input_file(input_path)
     else:
@@ -120,6 +144,7 @@ def optimize(
 
         row_str = f"{str(res.record_id):<25} | {str(res.status):<10} | {str(res.accepted):<15} | {score:<15} | {seq_len:<10}"
         logger.info(row_str)
+
 
 if __name__ == "__main__":
     app()
