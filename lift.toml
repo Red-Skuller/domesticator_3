@@ -3,7 +3,6 @@ name = "domestica"
 description = "Sequence analysis and codon optimization"
 # Target platforms for the final binaries
 platforms = ["linux-x86_64", "windows-x86_64", "macos-x86_64", "macos-aarch64"]
-env = { PYTHONUNBUFFERED = "1" }
 
 # Define the standalone Python interpreter to bundle
 [[lift.interpreters]]
@@ -19,4 +18,4 @@ name = "domesticator.pex"
 # Tell the Scie how to execute when the user runs the binary
 [[lift.commands]]
 exe = "#{cpython:python}"
-args = ["{domesticator.pex}"]
+args = ["-u", "{domesticator.pex}"]
