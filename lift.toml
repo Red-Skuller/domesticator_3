@@ -2,16 +2,16 @@
 name = "domestica"
 description = "Sequence analysis and codon optimization"
 # Target platforms for the final binaries
-platforms = ["linux-x86_64", "windows-x86_64"]
+platforms = ["linux-x86_64", "windows-x86_64", "macos-x86_64", "macos-aarch64"]
 
 # Define the standalone Python interpreter to bundle
 [[lift.interpreters]]
 id = "cpython"
 provider = "PythonBuildStandalone"
-version = "3.10.13"  # Must match the cp-310 in your PEX command
-release = "20231002" # A valid release tag from indygreg/python-build-standalone
+version = "3.10.13"
+release = "20260821"
 
-# Map the PEX file we just built
+# Map the PEX file
 [[lift.files]]
 name = "domesticator.pex"
 source = "dist/domesticator.pex"
@@ -20,3 +20,4 @@ source = "dist/domesticator.pex"
 [[lift.commands]]
 exe = "#{cpython:python}"
 args = ["{domesticator.pex}"]
+env = { PYTHONUNBUFFERED = "1" }

@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "domestica"
 version = "0.1.0"
-description = "DNA sequence optimization pipeline for synthesis vendors."
+description = "A tool to optimize DNA sequences for synthesis."
 requires-python = ">=3.9"
 dependencies = [
     "biopython>=1.80",
