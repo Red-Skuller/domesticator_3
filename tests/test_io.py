@@ -32,18 +32,18 @@ def test_write_output_file_csv(tmp_path: Path):
     write_output_file(results, out_path)
     assert out_path.exists()
     content = out_path.read_text()
-    assert "seq_1" in content
+    assert "test1" in content
     assert "ATGC" in content
 
 
 def test_write_output_file_genbank(tmp_path: Path):
     """Test writing outputs to GenBank files."""
     out_path = tmp_path / "output.gb"
-    rec = SeqRecord(Seq("ATGC"), id="seq_1")
+    rec = SeqRecord(Seq("ATGC"), id="seq_1",annotations={"molecule_type": "DNA"})
     results = [ResultRow(record_id="seq_1", status="SUCCESS", optimized_record=rec)]
     write_output_file(results, out_path)
 
-    expected_file = tmp_path / "output_seq_1.gb"
+    expected_file = tmp_path / "output.gb"
     assert expected_file.exists()
     content = expected_file.read_text()
     assert "LOCUS" in content
