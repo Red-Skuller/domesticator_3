@@ -2,10 +2,12 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class SequenceRecord(BaseModel):
     record_id: str
     protein_sequence: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 class ResultRow(BaseModel):
     record_id: str
@@ -21,6 +23,7 @@ class ResultRow(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+
 class PipelineConfig(BaseSettings):
     vendor_target: Optional[str] = None
     product: str = "eblocks"
@@ -28,7 +31,5 @@ class PipelineConfig(BaseSettings):
     min_length: int = Field(default=300, ge=0)
 
     model_config = SettingsConfigDict(
-        env_prefix="DOMESTICA_",
-        env_file=".env",
-        extra="ignore"
+        env_prefix="DOMESTICA_", env_file=".env", extra="ignore"
     )

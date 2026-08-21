@@ -9,12 +9,11 @@ platforms = ["linux-x86_64", "windows-x86_64", "macos-x86_64", "macos-aarch64"]
 id = "cpython"
 provider = "PythonBuildStandalone"
 version = "3.10.13"
-release = "20260821"
+release = "20231002"
 
 # Map the PEX file
 [[lift.files]]
 name = "domesticator.pex"
-source = "dist/domesticator.pex"
 
 # Tell the Scie how to execute when the user runs the binary
 [[lift.commands]]

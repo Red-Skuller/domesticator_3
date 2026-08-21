@@ -18,25 +18,31 @@ def parse_input_file(file_path: Path) -> List[SequenceRecord]:
         logger.debug("Identified format as FASTA.")
         for record in SeqIO.parse(file_path, "fasta"):
             seq_str = str(record.seq).upper().strip()
-            records.append(SequenceRecord(
-                record_id=record.id,
-                protein_sequence=seq_str if seq_str else None,
-                metadata={"description": record.description}
-            ))
+            records.append(
+                SequenceRecord(
+                    record_id=record.id,
+                    protein_sequence=seq_str if seq_str else None,
+                    metadata={"description": record.description},
+                )
+            )
     elif ext in (".xlsx", ".xls"):
         logger.debug("Identified format as Excel spreadsheet.")
         df = pd.read_excel(file_path)
         name_col = df.columns[0]
         seq_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-        logger.debug("Parsing columns: ID Column='%s', Sequence Column='%s'", name_col, seq_col)
+        logger.debug(
+            "Parsing columns: ID Column='%s', Sequence Column='%s'", name_col, seq_col
+        )
         for index, row in df.iterrows():
             val = row.get(seq_col)
             prot_seq = str(val).upper().strip() if pd.notna(val) else None
-            records.append(SequenceRecord(
-                record_id=str(row.get(name_col, f"seq_{index}")),
-                protein_sequence=prot_seq if prot_seq else None,
-                metadata=row.to_dict()
-            ))
+            records.append(
+                SequenceRecord(
+                    record_id=str(row.get(name_col, f"seq_{index}")),
+                    protein_sequence=prot_seq if prot_seq else None,
+                    metadata=row.to_dict(),
+                )
+            )
     else:
         logger.error("Failed parsing input file: Unsupported format standard '%s'", ext)
         raise ValueError(f"Unsupported input format: {ext}")
@@ -47,7 +53,9 @@ def parse_input_file(file_path: Path) -> List[SequenceRecord]:
 
 def write_output_file(results: List[ResultRow], destination: Path) -> None:
     if not results:
-        logger.warning("Execution generated empty result set. Omitting output operations.")
+        logger.warning(
+            "Execution generated empty result set. Omitting output operations."
+        )
         return
     ext = destination.suffix.lower()
     logger.info("Writing output data to destination path: %s", destination)
@@ -59,18 +67,25 @@ def write_output_file(results: List[ResultRow], destination: Path) -> None:
             if row.status == "SUCCESS" and row.optimized_record is not None:
                 rec = row.optimized_record
                 rec.id = row.record_id
-                rec.name = re.sub(r'[^a-zA-Z0-9_]', '_', row.record_id)[:16]
+                rec.name = re.sub(r"[^a-zA-Z0-9_]", "_", row.record_id)[:16]
                 records_to_write.append(rec)
 
         if records_to_write:
             for rec in records_to_write:
-                safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', rec.id)
-                out_path = destination.with_name(f"{destination.stem}_{safe_id}{destination.suffix}")
+                safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", rec.id)
+                out_path = destination.with_name(
+                    f"{destination.stem}_{safe_id}{destination.suffix}"
+                )
                 with open(out_path, "w") as f:
                     SeqIO.write(rec, f, "genbank")
-            logger.info("Successfully recorded %d sequence structures to GenBank files.", len(records_to_write))
+            logger.info(
+                "Successfully recorded %d sequence structures to GenBank files.",
+                len(records_to_write),
+            )
         else:
-            logger.warning("No successful optimized records available to serialize to GenBank format.")
+            logger.warning(
+                "No successful optimized records available to serialize to GenBank format."
+            )
     elif ext in (".xlsx", ".xls"):
         logger.debug("Formatting output matrix as Excel file dataframe tables.")
         df = pd.DataFrame([row.model_dump() for row in results])
@@ -82,5 +97,8 @@ def write_output_file(results: List[ResultRow], destination: Path) -> None:
         df.to_csv(destination, index=False)
         logger.info("Successfully wrote dataset matrix to CSV format.")
     else:
-        logger.error("Failed processing serialization: Unsupported destination file format standard '%s'", ext)
+        logger.error(
+            "Failed processing serialization: Unsupported destination file format standard '%s'",
+            ext,
+        )
         raise ValueError(f"Unsupported output format: {ext}")
