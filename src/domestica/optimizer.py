@@ -80,8 +80,15 @@ def _insert_into_template(template_record: SeqRecord, insert_dna: str) -> SeqRec
 
     insert_record = SeqRecord(Seq(insert_dna), id="target_insert", annotations={"molecule_type": "DNA"})
     merged_record = left_flank + insert_record + right_flank
-    merged_record.annotations["topology"] = template_record.annotations.get("topology", "linear")
 
+    # Transfer original annotations and metadata
+    merged_record.id = template_record.id
+    merged_record.name = template_record.name
+    merged_record.description = template_record.description
+    merged_record.annotations = template_record.annotations.copy()
+
+    merged_record.annotations["topology"] = template_record.annotations.get("topology",
+                                                                            "linear")  # TODO make it so topology is inherited from template i.e. implement circular templates and outputs
     left_len = len(left_flank)
 
     def map_pos(p):
@@ -141,9 +148,14 @@ def optimize_sequence(
 
     current_length = len(merged_record.seq)
     if current_length < min_length:
-        num_as = min_length - current_length
-        logger.info("Sequence length (%d bp) is below %d bp. Appending %d 'A' bases.", current_length, min_length, num_as)
-        merged_record.seq = merged_record.seq + ("A" * num_as)
+        num_pad = min_length - current_length
+        logger.info("Sequence length (%d bp) is below %d bp. Appending %d bp of ACGT padding.", current_length,
+                    min_length, num_pad)
+
+        # Pad with a neutral repeating sequence instead of "A"s to prevent massive overlapping
+        # AvoidPattern(AAAAAA) breaches which trigger a localization bug in dnachisel
+        padding_seq = ("ATGG" * (num_pad // 4 + 1))[:num_pad]
+        merged_record.seq = merged_record.seq + padding_seq
         padding_feature = SeqFeature(
             FeatureLocation(current_length, min_length, strand=1),
             type="misc_feature",

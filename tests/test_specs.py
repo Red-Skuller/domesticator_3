@@ -33,8 +33,8 @@ def test_minimize_num_kmers_scoring() -> None:
 
     # Assertions
     assert eval_rep.score < eval_uniq.score
-    assert eval_rep.best_possible_score == 0
-    assert eval_uniq.best_possible_score == 0
+    assert spec_rep.best_possible_score == 0
+    assert spec_uniq.best_possible_score == 0
 
 
 def test_specification_labels() -> None:

@@ -43,7 +43,7 @@ def test_write_output_file_genbank(tmp_path: Path):
     results = [ResultRow(record_id="seq_1", status="SUCCESS", optimized_record=rec)]
     write_output_file(results, out_path)
 
-    expected_file = tmp_path / "output.gb"
+    expected_file = tmp_path / "output_seq_1.gb"
     assert expected_file.exists()
     content = expected_file.read_text()
     assert "LOCUS" in content
